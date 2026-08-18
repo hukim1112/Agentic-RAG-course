@@ -295,7 +295,8 @@ python skills/mcp/scripts/execute_tool.py \
 
 ```python
 import os
-from langgraph.checkpoint.memory import MemorySaver
+import aiosqlite
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langchain.agents import create_agent
 from app.utils import get_llm
 from app.tools.common import file_read, glob_search, bash_command
@@ -306,7 +307,7 @@ AGENT_METADATA = {
     "description": "Anthropic Skills 기반 Enterprise RAG & FastMCP 통합 Frontier 어시스턴트"
 }
 
-def create_agent_executor():
+async def create_agent_executor():
     # 1. Google GenAI 최신 모델 로드
     llm = get_llm(model_name="google_genai:gemini-3.7-flash", temperature=0.1)
     
@@ -318,11 +319,20 @@ def create_agent_executor():
     # 3. 3대 범용 원시 도구 바인딩
     primitive_tools = [glob_search, file_read, bash_command]
     
+    # 4. SQLite 기반 L1 영속 체크포인터 메모리 셋업
+    db_dir = os.path.join(os.path.dirname(__file__), "../database")
+    os.makedirs(db_dir, exist_ok=True)
+    db_path = os.path.join(db_dir, "checkpoints.db")
+    
+    conn = await aiosqlite.connect(db_path, check_same_thread=False)
+    memory = AsyncSqliteSaver(conn)
+    await memory.setup()
+    
     return create_agent(
         model=llm,
         tools=primitive_tools,
         system_prompt=system_prompt,
-        checkpointer=MemorySaver(),
+        checkpointer=memory,
         context_schema=AgentContext
     )
 ```
