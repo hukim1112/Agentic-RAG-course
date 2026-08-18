@@ -1,77 +1,76 @@
 # ===============================================================================
-# Enterprise Agentic RAG Course Dependencies (Verified Compatible Stack)
+# Enterprise Agentic RAG Course / Harness Engineering Dependencies
+# LangChain & LangGraph Verified Compatible Latest Stable Stack (2026-08)
 # ===============================================================================
 
-# 1. Core LangChain & LangGraph Stack
+# 1. Core LangChain & LangGraph Stack (Tested & Verified Compatible)
+google-ai-generativelanguage
+google-cloud-language
+google-genai
 langchain==1.3.15
 langchain-core==1.5.4
-langchain-classic==1.0.8
-langchain-community==0.4.2
+langchain-openai==1.4.3
 langgraph==1.2.11
 langgraph-checkpoint==4.2.0
 langgraph-prebuilt==1.1.0
 langgraph-sdk==0.4.2
 langsmith==0.10.18
 
-# 2. LLM Providers & Model Adapters
-google-genai
-google-ai-generativelanguage
-google-cloud-language
+# 2. Extended LangChain Ecosystem & Model Adapters
+langchain-classic==1.0.8
+langchain-community==0.4.2
 langchain-google-genai==4.3.3
 langchain-google-vertexai
-langchain-openai==1.4.3
 langchain-tavily==0.2.18
-
-# 3. Vector DB, Chunking & Persistence
-chromadb==1.4.0
-langchain-chroma==1.1.0
 langchain-text-splitters==1.1.2
-aiosqlite
-langgraph-checkpoint-sqlite==3.1.1
-pysqlite3-binary
 langchain-postgres==0.0.17
+langchain-chroma==1.1.0
+langgraph-checkpoint-sqlite==3.1.1
 langgraph-checkpoint-postgres==3.1.2
+
+# 3. Vector DB, Persistence & Checkpointing
+chromadb==1.4.0
+aiosqlite
+pysqlite3-binary
 psycopg2-binary==2.9.11
 
-# 4. Knowledge Graph & Microsoft GraphRAG
-graphrag>=3.1.0
+# 4. Knowledge Graph & GraphRAG (Lab 2)
 networkx>=3.2
 pyvis>=0.3.2
 lancedb>=0.24.0
+graphrag>=3.1.0
 pyarrow>=18.0.0
 pyyaml>=6.0.1
 
-# 5. FastMCP Microservices & Multi-Agent Communication
-fastmcp>=3.4.7
+# 5. FastMCP Microservices & Web/Finance Tools (Lab 3 & Mission)
+fastmcp==3.4.7
 langchain-mcp-adapters>=0.1.0
-requests>=2.31.0
 httpx==0.28.1
 sse-starlette==3.4.8
-
-# 6. Document & Data Processing
-pymupdf4llm==0.2.7
-pdfplumber==0.11.8
-pypdf==6.5.0
-Pillow==12.0.0
-imagehash==4.3.2
-pandas
-matplotlib
-datasets
-protobuf
-tqdm==4.67.1
-lark==1.3.1
-
-# 7. Web & Finance MCP Tools
 yfinance>=1.0.0
 beautifulsoup4>=4.12.0
 duckduckgo_search>=8.1.1
 ddgs>=9.14.4
 
-# 8. Web App & Serving Infrastructure
+# 6. Document & Data Processing
+pdfplumber==0.11.8
+pypdf==6.5.0
+pymupdf4llm==0.2.7
+lark==1.3.1
+Pillow==12.0.0
+tqdm==4.67.1
+imagehash==4.3.2
+protobuf
+datasets
+matplotlib
+pandas
+
+# 7. Web App & Serving Infrastructure
+gradio==6.23.1
 fastapi==0.141.1
 uvicorn==0.52.1
 pydantic==2.13.4
 streamlit==1.61.1
-gradio==6.23.1
+imageio[ffmpeg]==2.37.4
 python-dotenv>=1.0.0
 nest-asyncio>=1.6.0
