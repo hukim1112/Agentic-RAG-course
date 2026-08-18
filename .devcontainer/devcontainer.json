@@ -1,0 +1,43 @@
+{
+  "name": "Enterprise Agentic RAG Course DevContainer",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12-bookworm",
+  
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-toolsai.jupyter",
+        "ms-toolsai.vscode-jupyter-cell-tags",
+        "ms-toolsai.jupyter-keymap",
+        "ms-toolsai.jupyter-renderers"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "jupyter.askForKernelRestart": false
+      }
+    }
+  },
+
+  "forwardPorts": [8501, 8000, 8010, 8020],
+  "portsAttributes": {
+    "8501": {
+      "label": "Streamlit Chat UI",
+      "onAutoForward": "openBrowserOnce"
+    },
+    "8000": {
+      "label": "FastAPI Agent Backend",
+      "onAutoForward": "silent"
+    },
+    "8010": {
+      "label": "Enterprise RAG FastMCP Server",
+      "onAutoForward": "silent"
+    },
+    "8020": {
+      "label": "Finance Market FastMCP Server",
+      "onAutoForward": "silent"
+    }
+  },
+
+  "postCreateCommand": "bash install/install_all.sh"
+}
