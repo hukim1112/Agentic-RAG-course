@@ -4,9 +4,15 @@ rag_tool_correction.py
 도구 레벨 자가 수정(Self-Correction) 및 쿼리 재작성(Query Rewriting) 미들웨어.
 LangChain AgentMiddleware의 @wrap_tool_call을 활용하여 검색 도구 실행을 가로채고,
 검색 결과 공백/실패 시 능동적으로 쿼리를 재작성하여 1회 자동 재시도를 수행합니다.
+
+핵심 설계 원칙:
+  - "유효한 부정 응답"과 "빈 결과"를 엄격히 구분
+  - 세션 단위 총 재작성 예산(budget)으로 도구 호출 폭발 방지
+  - 스레드 안전 상태 관리
 """
 
 import time
+import threading
 from typing import Any, Dict, List, Optional
 from langchain.agents.middleware import AgentMiddleware, wrap_tool_call
 from langchain_core.messages import HumanMessage
@@ -25,24 +31,27 @@ class RAGToolCorrectionMiddleware(AgentMiddleware):
     """
     [도구 레벨 자가 수정 미들웨어]
     1. 중복 도구 호출 방지 (Anti-Spinning Cache)
-    2. 빈 검색 결과 감지 시 QueryRewriter를 통한 1회 자동 재검색 (Auto-Retry)
-    3. 도구 실행 궤적(Tool Trajectory) 메트릭 캡처
+    2. "진짜 빈 결과"만 감지하여 QueryRewriter를 통한 1회 자동 재검색 (Auto-Retry)
+    3. 세션 단위 총 재작성 예산(max_session_rewrites)으로 도구 호출 폭발 방지
+    4. 도구 실행 궤적(Tool Trajectory) 메트릭 캡처
     """
 
     def __init__(
         self,
         llm: Optional[Any] = None,
         enable_auto_retry: bool = True,
-        max_tool_retries: int = 1,
+        max_session_rewrites: int = 3,
         verbose: bool = True
     ):
         self.llm = llm
         self.enable_auto_retry = enable_auto_retry
-        self.max_tool_retries = max_tool_retries
+        self.max_session_rewrites = max_session_rewrites
         self.verbose = verbose
-        # 세션별 실행 궤적 및 중복 호출 방지 캐시
-        self.seen_tool_calls = set()
-        self.tool_trajectory_logs = []
+        # 스레드 안전 상태
+        self._lock = threading.Lock()
+        self.seen_tool_calls: set = set()
+        self.tool_trajectory_logs: List[Dict[str, Any]] = []
+        self._session_rewrite_count: int = 0
 
     def _get_rewriter_llm(self):
         if self.llm is not None:
@@ -75,22 +84,45 @@ class RAGToolCorrectionMiddleware(AgentMiddleware):
                 print(f"⚠️ [QueryRewriter Error] {e} -> 원본 쿼리 유지")
             return original_query
 
-    def _is_empty_or_failed_result(self, result: Any) -> bool:
-        """도구 실행 결과가 공백이거나 실패했는지 판별합니다."""
+    def _is_truly_empty(self, result: Any) -> bool:
+        """
+        도구 실행 결과가 '진짜' 공백/실패인지 판별합니다.
+        
+        핵심 구분:
+        - '진짜 빈 결과': None, 빈 문자열, 빈 배열 → 재시도 대상
+        - '유효한 부정 응답': "해당 규정이 존재하지 않습니다" 등 → 이미 답을 찾은 것이므로 재시도 불필요
+        """
         if result is None:
             return True
         res_str = str(result).strip()
+        # 완전히 비어있는 경우만 진짜 빈 결과
         if not res_str or res_str == "[]" or res_str == "{}":
             return True
-        empty_signals = [
-            "검색 결과가 없습니다",
-            "관련 문서를 찾을 수 없습니다",
-            "no results found",
-            "not found",
-            "일치하는 정보가 없습니다",
-            "0 results"
+        return False
+
+    def _is_negative_finding(self, result: Any) -> bool:
+        """도구가 '해당 정보가 없다'는 명확한 부정 응답을 반환했는지 판별합니다."""
+        if result is None:
+            return False
+        res_str = str(result)
+        # '존재하지 않습니다', '명시되어 있지 않습니다' 등 유효한 부정 답변
+        definitive_negatives = [
+            "존재하지 않습니다",
+            "명시되어 있지 않습니다",
+            "규정에 없습니다",
+            "제도가 없습니다",
         ]
-        return any(signal in res_str.lower() for signal in empty_signals)
+        if any(neg in res_str for neg in definitive_negatives):
+            return True
+        return False
+
+    def _should_retry(self, result: Any) -> bool:
+        """재시도가 필요한지 종합 판단합니다."""
+        # 유효한 부정 응답은 재시도 불필요 (이것이 핵심!)
+        if self._is_negative_finding(result):
+            return False
+        # 진짜 빈 결과만 재시도 대상
+        return self._is_truly_empty(result)
 
     def wrap_tool_call(self, request, handler):
         """동기 도구 실행 가로채기."""
@@ -104,8 +136,9 @@ class RAGToolCorrectionMiddleware(AgentMiddleware):
 
         # 1. 중복 호출(Anti-Spinning) 검사
         call_signature = f"{tool_name}:{str(sorted(tool_args.items()))}"
-        is_duplicate = call_signature in self.seen_tool_calls
-        self.seen_tool_calls.add(call_signature)
+        with self._lock:
+            is_duplicate = call_signature in self.seen_tool_calls
+            self.seen_tool_calls.add(call_signature)
 
         start_time = time.time()
         if self.verbose:
@@ -118,11 +151,13 @@ class RAGToolCorrectionMiddleware(AgentMiddleware):
             response = f"Tool execution error: {e}"
 
         duration_ms = int((time.time() - start_time) * 1000)
-        is_empty = self._is_empty_or_failed_result(response)
 
-        # 3. 검색 결과 공백/실패 시 쿼리 재작성 & 1회 자동 재시도
+        # 3. 재시도 판단: '유효한 부정 응답'은 절대 재시도하지 않음
         retry_performed = False
-        if is_empty and self.enable_auto_retry and self.max_tool_retries > 0:
+        with self._lock:
+            budget_remaining = self._session_rewrite_count < self.max_session_rewrites
+
+        if self._should_retry(response) and self.enable_auto_retry and budget_remaining:
             # 쿼리 파라미터 식별 (query, question, search_query 등)
             query_key = None
             for k in ["query", "question", "search_query", "query_text", "keyword"]:
@@ -133,10 +168,14 @@ class RAGToolCorrectionMiddleware(AgentMiddleware):
             if query_key:
                 orig_query = tool_args[query_key]
                 if self.verbose:
-                    print(f"⚠️ [RAGToolCorrection] '{tool_name}' 검색 결과 공백 -> QueryRewriter 자가 수정 발동!")
+                    print(f"⚠️ [RAGToolCorrection] '{tool_name}' 결과 공백 -> QueryRewriter 자가 수정 발동!")
                 
                 rewritten_q = self.rewrite_query(orig_query, domain_hint=tool_name)
                 if rewritten_q != orig_query:
+                    # 세션 예산 차감
+                    with self._lock:
+                        self._session_rewrite_count += 1
+                    
                     # 인자 교체 후 재실행
                     new_args = dict(tool_args)
                     new_args[query_key] = rewritten_q
@@ -147,7 +186,7 @@ class RAGToolCorrectionMiddleware(AgentMiddleware):
                     retry_start = time.time()
                     try:
                         retry_response = handler(request)
-                        if not self._is_empty_or_failed_result(retry_response):
+                        if not self._is_truly_empty(retry_response):
                             response = retry_response
                             retry_performed = True
                             duration_ms += int((time.time() - retry_start) * 1000)
@@ -166,17 +205,19 @@ class RAGToolCorrectionMiddleware(AgentMiddleware):
             "retry_performed": retry_performed,
             "result_summary": str(response)[:300],
             "result_length": len(str(response)),
-            "status": "SUCCESS" if not self._is_empty_or_failed_result(response) else "EMPTY"
+            "status": "SUCCESS" if not self._is_truly_empty(response) else "EMPTY"
         }
-        self.tool_trajectory_logs.append(log_entry)
+        with self._lock:
+            self.tool_trajectory_logs.append(log_entry)
         return response
 
     async def awrap_tool_call(self, request, handler):
         """비동기 도구 실행 가로채기 (동기와 동일 로직)."""
-        # 비동기 환경에서도 안전하게 동기 래퍼 위임
         return self.wrap_tool_call(request, handler)
 
     def reset_session(self):
         """세션 초기화."""
-        self.seen_tool_calls.clear()
-        self.tool_trajectory_logs.clear()
+        with self._lock:
+            self.seen_tool_calls.clear()
+            self.tool_trajectory_logs.clear()
+            self._session_rewrite_count = 0
