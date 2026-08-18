@@ -20,6 +20,7 @@ import json
 import shutil
 import pickle
 import networkx as nx
+import chromadb
 from dotenv import load_dotenv
 
 # 프로젝트 루트 경로 등록
@@ -73,6 +74,13 @@ def build_policy_vector_db():
     embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
 
     print(f"  • 통합 Chroma DB에 인덱싱 중: {CHROMA_DIR} (컬렉션: enterprise_policy_store) ...")
+    import chromadb
+    client = chromadb.PersistentClient(path=CHROMA_DIR)
+    try:
+        client.delete_collection("enterprise_policy_store")
+    except Exception:
+        pass
+
     vectorstore = Chroma.from_documents(
         documents=all_enriched_docs,
         embedding=embeddings,
@@ -153,6 +161,12 @@ def build_bok_vector_db():
 
         embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
         print(f"  • 통합 Chroma DB에 인덱싱 중: {CHROMA_DIR} (컬렉션: bok_industry_reports_store) ...")
+        client = chromadb.PersistentClient(path=CHROMA_DIR)
+        try:
+            client.delete_collection("bok_industry_reports_store")
+        except Exception:
+            pass
+
         vectorstore = Chroma.from_documents(
             documents=bok_docs,
             embedding=embeddings,
