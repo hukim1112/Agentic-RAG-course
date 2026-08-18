@@ -4,12 +4,20 @@ rag_self_correction.py
 응답 레벨 환각 검증(Hallucination Grading) 및 자율 반성(Self-Reflection) 미들웨어.
 LangChain AgentMiddleware의 after_agent 훅을 활용하여 에이전트의 최종 생성 응답을 가로채고,
 검색된 Context와의 사실 일치도(Groundedness)를 검증하여 미달 시 피드백 메시지를 주입합니다.
+
+핵심 설계 원칙:
+  - "단일 패스 자가 수정": 피드백 주입은 최대 1회 (one-shot correction)
+  - 메시지 히스토리 기반 재시도 카운트: 외부 dict 대신 메시지에서 직접 횟수를 세어 스레드 안전
+  - 유효한 부정 답변("존재하지 않는다")에 대한 환각 오탐 방지
 """
 
 from typing import Any, Dict, List, Optional
 from langchain.agents.middleware import AgentMiddleware
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 from pydantic import BaseModel, Field
+
+# Self-Correction 피드백 메시지의 고유 프리픽스 (식별용 상수)
+CORRECTION_PREFIX = "🛑 [Self-Correction"
 
 
 class GroundednessEvaluation(BaseModel):
@@ -26,23 +34,21 @@ class RAGSelfCorrectionMiddleware(AgentMiddleware):
     [응답 레벨 자가 수정 미들웨어]
     1. 대화 히스토리에서 ToolMessage (검색 Context)와 최종 AIMessage (생성 답변) 추출
     2. GroundednessGrader를 통해 환각 및 근거 여부 루브릭 채점
-    3. 환각 감지 또는 근거 부족 시 HumanMessage 형태의 피드백을 주입하여 자가 수정 루프 격발
-    4. 최대 재시도(max_correction_retries=2) 제어를 통해 무한 루프 차단
+    3. 환각 감지 또는 근거 부족 시 HumanMessage 형태의 피드백을 주입하여 1회 자가 수정 루프 격발
+    4. 메시지 히스토리 기반 재시도 카운트로 무한 루프 구조적 차단
     """
 
     def __init__(
         self,
         judge_llm: Optional[Any] = None,
         min_groundedness_score: float = 0.70,
-        max_retries: int = 2,
+        max_retries: int = 1,
         verbose: bool = True
     ):
         self.judge_llm = judge_llm
         self.min_groundedness_score = min_groundedness_score
         self.max_retries = max_retries
         self.verbose = verbose
-        # 세션별 재시도 카운트 추적
-        self._retry_counts: Dict[str, int] = {}
         self.last_evaluation: Optional[GroundednessEvaluation] = None
 
     def _get_judge_llm(self):
@@ -50,6 +56,32 @@ class RAGSelfCorrectionMiddleware(AgentMiddleware):
             return self.judge_llm
         from app.utils.llm import get_llm
         return get_llm(model_name="gemini-3.5-flash", temperature=0.0)
+
+    def _count_correction_attempts(self, messages: list) -> int:
+        """메시지 히스토리에서 이미 주입된 자가 수정 피드백 횟수를 직접 센다.
+        
+        외부 dict 기반 추적 대신 메시지 자체에서 카운트하므로:
+        - 스레드 간 상태 간섭 없음
+        - 세션 ID 불일치 문제 없음
+        - 정확한 재시도 횟수 보장
+        """
+        count = 0
+        for msg in messages:
+            if isinstance(msg, HumanMessage) and str(msg.content).startswith(CORRECTION_PREFIX):
+                count += 1
+        return count
+
+    def _extract_last_ai_answer(self, messages: list) -> Optional[str]:
+        """메시지 리스트에서 마지막 AIMessage의 content를 추출합니다.
+        
+        SelfCorrection이 주입한 HumanMessage(피드백)가 messages[-1]일 수 있으므로
+        반드시 역순으로 탐색하여 AIMessage만 찾습니다.
+        """
+        from app.utils.message_utils import normalize_content
+        for msg in reversed(messages):
+            if isinstance(msg, AIMessage) and msg.content:
+                return normalize_content(msg.content)
+        return None
 
     def evaluate_groundedness(self, user_query: str, contexts: List[str], generated_answer: str) -> GroundednessEvaluation:
         """검색된 Context와 생성된 답변 간의 사실성을 엄격하게 채점합니다."""
@@ -91,41 +123,41 @@ class RAGSelfCorrectionMiddleware(AgentMiddleware):
         if not messages:
             return None
 
-        last_msg = messages[-1]
-        if not isinstance(last_msg, AIMessage) or not last_msg.content:
+        # 1. 마지막 AIMessage 추출 (HumanMessage 피드백이 끝에 있을 수 있으므로 역순 탐색)
+        answer_text = self._extract_last_ai_answer(messages)
+        if not answer_text:
             return None
 
-        from app.utils.message_utils import normalize_content
-        answer_text = normalize_content(last_msg.content)
+        # 2. 메시지 히스토리 기반 재시도 횟수 확인 (스레드 안전)
+        current_attempts = self._count_correction_attempts(messages)
+        if current_attempts >= self.max_retries:
+            if self.verbose:
+                print(f"⏹️ [RAGSelfCorrection] 자가 수정 예산 소진 ({current_attempts}/{self.max_retries}) → 종료")
+            return {"transition": "completed"}
 
-        # 1. 사용자 질문 및 수집된 Tool Contexts 추출
+        # 3. 사용자 질문 및 수집된 Tool Contexts 추출
+        from app.utils.message_utils import normalize_content
         user_query = ""
         contexts = []
         for msg in messages:
-            if isinstance(msg, HumanMessage) and not str(msg.content).startswith("🛑 [Self-Correction"):
+            if isinstance(msg, HumanMessage) and not str(msg.content).startswith(CORRECTION_PREFIX):
                 user_query = normalize_content(msg.content)
             elif isinstance(msg, ToolMessage) and msg.content:
                 contexts.append(normalize_content(msg.content))
 
-        # 2. 세션 식별 및 재시도 카운트 확인
-        session_id = getattr(runtime, "session_id", "default_session") if runtime else "default_session"
-        current_retries = self._retry_counts.get(session_id, 0)
-
-        # 3. Groundedness 채점
+        # 4. Groundedness 채점
         eval_result = self.evaluate_groundedness(user_query, contexts, answer_text)
 
         if self.verbose:
             status_icon = "✅" if (eval_result.is_grounded and eval_result.groundedness_score >= self.min_groundedness_score) else "🔴"
             print(f"\n{status_icon} [RAGSelfCorrection] Groundedness Score: {eval_result.groundedness_score:.2f} (환각 여부: {eval_result.has_hallucination})")
 
-        # 4. 환각 감지 또는 근거 부족 시 자가 수정 루프 격발
+        # 5. 환각 감지 또는 근거 부족 시 자가 수정 루프 격발
         is_failed = (not eval_result.is_grounded) or (eval_result.groundedness_score < self.min_groundedness_score) or eval_result.has_hallucination
 
-        if is_failed and current_retries < self.max_retries:
-            self._retry_counts[session_id] = current_retries + 1
-            
+        if is_failed:
             correction_feedback = (
-                f"🛑 [Self-Correction Blocking Error: 사실성/환각 검증 실패]\n"
+                f"{CORRECTION_PREFIX} Blocking Error: 사실성/환각 검증 실패]\n"
                 f"당신이 생성한 답변에서 검색 문서(Context)에 근거하지 않은 환각 또는 불일치가 감지되었습니다.\n\n"
                 f"📌 피드백 지침:\n{eval_result.critique_feedback}\n"
                 f"📌 미확인 주장 목록: {eval_result.unsupported_claims}\n\n"
@@ -134,18 +166,14 @@ class RAGSelfCorrectionMiddleware(AgentMiddleware):
             )
             
             if self.verbose:
-                print(f"🔄 [RAGSelfCorrection] 자율 반성 피드백 주입 (재시도 {self._retry_counts[session_id]}/{self.max_retries})")
+                print(f"🔄 [RAGSelfCorrection] 자율 반성 피드백 주입 (시도 {current_attempts + 1}/{self.max_retries})")
             
             updated_messages = list(messages) + [HumanMessage(content=correction_feedback)]
             return {"messages": updated_messages, "transition": "self_correction_retry"}
 
-        # 통과 또는 재시도 소진 시 정상 종료
-        if session_id in self._retry_counts:
-            del self._retry_counts[session_id]
-            
+        # 통과 시 정상 종료
         return {"transition": "completed", "final_groundedness_score": eval_result.groundedness_score}
 
     def reset_session(self):
         """세션 초기화."""
-        self._retry_counts.clear()
         self.last_evaluation = None

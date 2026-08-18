@@ -4,6 +4,10 @@ rag_eval_harness.py
 과정(Tool Trajectory)과 결과(RAGAS Outcome)를 종합 감사하는 2계층 평가 하네스 미들웨어.
 LangChain AgentMiddleware의 라이프사이클 훅을 통해 에이전트의 다단계 도구 호출 궤적과
 최종 응답 품질을 가로채고, RAGAS 4대 핵심 지표 및 궤적 효율성을 정량 측정합니다.
+
+핵심 설계 원칙:
+  - 최종 답변 추출 시 반드시 역순 AIMessage 탐색 (SelfCorrection 피드백 HumanMessage 배제)
+  - SelfCorrection 재시도에 의한 추가 도구 호출은 궤적 평가에서 감안
 """
 
 import os
@@ -13,6 +17,9 @@ from typing import Any, Dict, List, Optional
 from langchain.agents.middleware import AgentMiddleware
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 from pydantic import BaseModel, Field
+
+# Self-Correction 피드백 식별 프리픽스
+CORRECTION_PREFIX = "🛑 [Self-Correction"
 
 
 class TrajectoryEvaluation(BaseModel):
@@ -46,6 +53,47 @@ class ComprehensiveEvalResult(BaseModel):
     outcome_eval: OutcomeEvaluation
     composite_score: float = Field(description="최종 통합 점수 (과정 40% + 결과 60%)")
     status: str
+
+
+def extract_last_ai_answer(messages: list) -> str:
+    """메시지 리스트에서 마지막 AIMessage의 content를 안전하게 추출합니다.
+    
+    SelfCorrection 미들웨어가 주입한 HumanMessage(피드백)가 messages[-1]일 수 있으므로
+    반드시 역순으로 탐색하여 실제 AIMessage만 찾습니다.
+    
+    이 함수는 Harness 점수 역전 버그의 근본 원인을 해결합니다:
+    기존: messages[-1].content → HumanMessage(피드백) 텍스트를 답변으로 오인 → 낮은 점수
+    수정: 역순 AIMessage 탐색 → 실제 에이전트 답변만 추출 → 정확한 채점
+    """
+    from app.utils.message_utils import normalize_content
+    for msg in reversed(messages):
+        if isinstance(msg, AIMessage) and msg.content:
+            return normalize_content(msg.content)
+    # fallback: messages[-1]이 dict인 경우 등
+    if messages:
+        content = getattr(messages[-1], "content", None) or str(messages[-1])
+        return content[:2000] if content else ""
+    return ""
+
+
+def extract_user_query(messages: list) -> str:
+    """메시지 리스트에서 원본 사용자 질문을 추출합니다 (SelfCorrection 피드백 제외)."""
+    from app.utils.message_utils import normalize_content
+    user_query = ""
+    for msg in messages:
+        if isinstance(msg, HumanMessage) and not str(msg.content).startswith(CORRECTION_PREFIX):
+            user_query = normalize_content(msg.content)
+    return user_query
+
+
+def extract_tool_contexts(messages: list) -> List[str]:
+    """메시지 리스트에서 ToolMessage들의 content를 추출합니다."""
+    from app.utils.message_utils import normalize_content
+    contexts = []
+    for msg in messages:
+        if isinstance(msg, ToolMessage) and msg.content:
+            contexts.append(normalize_content(msg.content))
+    return contexts
 
 
 class RAGEvalHarnessMiddleware(AgentMiddleware):
@@ -187,16 +235,11 @@ class RAGEvalHarnessMiddleware(AgentMiddleware):
         if not messages:
             return None
 
-        from app.utils.message_utils import normalize_content
-        user_query = ""
-        contexts = []
-        for msg in messages:
-            if isinstance(msg, HumanMessage) and not str(msg.content).startswith("🛑 [Self-Correction"):
-                user_query = normalize_content(msg.content)
-            elif isinstance(msg, ToolMessage) and msg.content:
-                contexts.append(normalize_content(msg.content))
+        # ★ 핵심 수정: 역순 AIMessage 탐색으로 실제 에이전트 답변만 추출
+        final_answer = extract_last_ai_answer(messages)
+        user_query = extract_user_query(messages)
+        contexts = extract_tool_contexts(messages)
 
-        final_answer = normalize_content(messages[-1].content) if isinstance(messages[-1], AIMessage) else ""
         session_id = getattr(runtime, "session_id", f"session_{int(time.time())}") if runtime else f"session_{int(time.time())}"
 
         # 1. 과정 평가 (Trajectory)

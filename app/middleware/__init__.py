@@ -7,12 +7,19 @@ app/middleware/__init__.py
 from .logging_middleware import LoggingMiddleware
 from .reference_logging import ReferenceLoggingMiddleware
 from .rag_tool_correction import RAGToolCorrectionMiddleware, RewrittenQuery
-from .rag_self_correction import RAGSelfCorrectionMiddleware, GroundednessEvaluation
+from .rag_self_correction import (
+    RAGSelfCorrectionMiddleware,
+    GroundednessEvaluation,
+    CORRECTION_PREFIX,
+)
 from .rag_eval_harness import (
     RAGEvalHarnessMiddleware,
     TrajectoryEvaluation,
     OutcomeEvaluation,
     ComprehensiveEvalResult,
+    extract_last_ai_answer,
+    extract_user_query,
+    extract_tool_contexts,
 )
 
 __all__ = [
@@ -22,8 +29,12 @@ __all__ = [
     "RewrittenQuery",
     "RAGSelfCorrectionMiddleware",
     "GroundednessEvaluation",
+    "CORRECTION_PREFIX",
     "RAGEvalHarnessMiddleware",
     "TrajectoryEvaluation",
     "OutcomeEvaluation",
     "ComprehensiveEvalResult",
+    "extract_last_ai_answer",
+    "extract_user_query",
+    "extract_tool_contexts",
 ]

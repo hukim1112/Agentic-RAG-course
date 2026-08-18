@@ -30,7 +30,8 @@ env/
 # Ignore runtime chat history, checkpoints, and evaluation artifacts
 app/database/checkpoints.db*
 app/database/chat_history.db*
-artifacts/
+artifacts/*
+!artifacts/*.png
 
 
 # Task tracking & State
