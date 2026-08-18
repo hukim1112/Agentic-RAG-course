@@ -10,7 +10,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.client import AgentClient
 
 # --- Page Config ---
-st.set_page_config(page_title="Harness Agent UI", layout="wide")
+st.set_page_config(page_title="RAG Agent UI", layout="wide")
 
 # --- Premium Custom CSS Styling (Bright Light-Blue SaaS Theme) ---
 st.markdown("""
@@ -196,7 +196,7 @@ if "partial_response" not in st.session_state:
 
 # --- Sidebar: Room & Agent Management ---
 with st.sidebar:
-    st.title("🤖 Harness Agent Lab")
+    st.title("🤖 RAG Agent Lab")
     st.markdown("---")
     
     # 1. Agent Selection
@@ -280,7 +280,7 @@ with st.sidebar:
 st.markdown(f"""
 <div class="header-card">
     <h2>Chat with <code>{agent_name.upper()}</code></h2>
-    <p class="status-text">사용자와 상호작용하는 프로덕션 에이전트 및 하네스 모니터링 환경입니다.</p>
+    <p class="status-text">사내 규정, 조직도 지식 그래프, 거시 산업 보고서 및 FastMCP 도구를 자율 연계하는 엔터프라이즈 Agentic RAG 워크스페이스입니다.</p>
 </div>
 """, unsafe_allow_html=True)
 
