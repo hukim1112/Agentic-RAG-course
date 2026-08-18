@@ -1,141 +1,140 @@
-# 🤖 Basic Agent Template (범용 에이전트 개발 템플릿)
+# 🏛️ Enterprise Agentic RAG 실무 마스터 과정
 
-본 프로젝트는 프로덕션 레벨의 AI 에이전트를 신속하게 개발하고 배포하기 위한 **범용 에이전트 코드베이스 템플릿(basic_agent)**입니다.
+본 저장소는 **(주)넥스트AI**의 가상 엔터프라이즈 환경을 배경으로, **Chroma Vector DB, NetworkX 지식 그래프, Microsoft GraphRAG, FastMCP 마이크로서비스 및 Anthropic Agent Skills 표준**을 결합한 최첨단 **Frontier Agentic RAG 어시스턴트**를 단계별로 구축하고 실무에 배포하는 실습 교육 과정 코드베이스입니다.
 
 ---
 
-## 🚀 시작하기 (환경 세팅)
+## 🎯 핵심 학습 목표 및 아키텍처
 
-로컬 WSL2(우분투) 환경에서 다음 명령어를 실행하여 의존성 패키지를 설치하고 환경을 설정하세요.
+기존의 단순 단일 벡터 검색(Naive RAG) 한계를 뛰어넘어, 질문의 복잡도와 데이터 특성에 따라 **사규(Window Expansion), BOK 산업보고서, 2-Hop 조직 지식 그래프, 전사 거시 프로젝트(GraphRAG)**를 스스로 자율 탐색 및 연계하는 프로덕션 레벨의 에이전틱 시스템을 완성합니다.
 
-```bash
-# 1. install 폴더로 이동하여 패키지 설치
-cd install
-pip install -r requirements.txt
+```mermaid
+flowchart TD
+    User([👤 사용자 / Streamlit UI]) --> |자연어 질의| Agent[🤖 Frontier RAG Agent<br/>app/agents/rag_agent.py]
+    
+    subgraph Autonomous["🧠 자율 탐색 파이프라인 (Anthropic Skills)"]
+        Agent --> |1. file_read| Catalog[📄 MCP 카탈로그<br/>app/prompts/MCP.md]
+        Agent --> |2. bash_command| CLI[🛠️ Skills CLI 도구<br/>skills/mcp/scripts/]
+    end
+    
+    subgraph Microservices["🌐 FastMCP Stateless HTTP Microservices"]
+        CLI --> |HTTP POST /mcp| RagMCP["🏢 Enterprise RAG Server<br/>(:8010/mcp)"]
+        CLI -.-> |HTTP POST /mcp| FinanceMCP["📈 Finance Market Server<br/>(:8020/mcp)"]
+    end
+    
+    subgraph EnterpriseDB["📦 4대 엔터프라이즈 RAG 데이터베이스 (app/database/)"]
+        RagMCP --> DB1[("1. 사규 Chroma Vector DB<br/>+ Window Expansion (24 Chunks)")]
+        RagMCP --> DB2[("2. BOK 산업보고서 Chroma DB<br/>(338 Chunks)")]
+        RagMCP --> DB3[("3. NetworkX 조직 지식 그래프<br/>(57 Nodes, 56 Edges)")]
+        RagMCP --> DB4[("4. Microsoft GraphRAG DB<br/>(Global / Local Search)")]
+    end
+    
+    Agent --> |대화 세션 영속화| Sqlite[("💾 SQLite Checkpointer<br/>app/database/checkpoints.db")]
 ```
 
-### 환경 변수 설정
-프로젝트 루트에 `.env` 파일을 생성하고 사용할 API 키를 설정하세요. (기본 설정은 `.env.example`을 참고하세요.)
+---
+
+## 📚 4단계 실습 커리큘럼 (Jupyter Notebooks)
+
+| 챕터 | 실습 노트북 | 핵심 학습 내용 |
+| :--- | :--- | :--- |
+| **Part 1** | [`notebooks/01_enterprise_rag_database.ipynb`](notebooks/01_enterprise_rag_database.ipynb) | • 사규 마크다운 계층 청킹 및 **Window Expansion(전문 복원)** 룩업 맵 구축<br/>• 한국은행(BOK) 4개 분기 주력산업 모니터링 보고서 PDF 벡터 인덱싱 |
+| **Part 2** | [`notebooks/02_knowledge_graph_and_graphrag.ipynb`](notebooks/02_knowledge_graph_and_graphrag.ipynb) | • LLM 기반 엔티티-관계 트리플렛 추출 및 **NetworkX 2-Hop BFS** 탐색<br/>• **Microsoft GraphRAG** 커뮤니티 요약(Global) 및 엔티티 심층 질의(Local) |
+| **Part 3** | [`notebooks/03_fastmcp_enterprise_rag_server.ipynb`](notebooks/03_fastmcp_enterprise_rag_server.ipynb) | • 최신 **FastMCP Stateless Streamable HTTP (`:8010/mcp`)** 마이크로서비스 개발<br/>• 4대 DB를 `@mcp.tool`로 노출하고 CLI를 통한 프로토콜 핸드셰이크 실습 |
+| **Part 4** | [`notebooks/04_self_correction_and_evaluation.ipynb`](notebooks/04_self_correction_and_evaluation.ipynb) | • 문서 관련성 평가(Retrieval Grader) 기반 **Corrective RAG (CRAG)** 자가치유<br/>• **Ragas 프레임워크**를 활용한 충실도(Faithfulness), 답변 관련성 정량 평가 |
+
+---
+
+## 🚀 빠른 시작 (Quick Start)
+
+### 1. 환경 설정 및 의존성 설치
+로컬 WSL2(우분투) 환경에서 가상환경을 활성화하고 패키지를 설치합니다:
+
+```bash
+# 가상환경 활성화 후 의존성 패키지 설치
+pip install -r install/requirements.txt
+```
+
+### 2. 환경 변수 설정 (`.env`)
+프로젝트 루트에 `.env` 파일을 생성하고 Google Gemini 및 필요 API 키를 설정합니다:
 
 ```env
-OPENAI_API_KEY="your-openai-api-key"
 GOOGLE_API_KEY="your-gemini-api-key"
-```
-
-### 📊 관측성 설정 (LangSmith)
-에이전트 실행 흐름의 레이턴시와 호출 과정을 모니터링하기 위해 LangSmith를 설정할 수 있습니다.
-
-```env
-LANGCHAIN_TRACING_V2=true
-LANGCHAIN_API_KEY="your-langsmith-key"
-LANGCHAIN_PROJECT=basic-agent
+OPENAI_API_KEY="your-openai-api-key" # 선택 (GraphRAG 또는 평가 시 활용)
+LANGSMITH_TRACING="true"
+LANGSMITH_PROJECT="enterprise-agentic-rag"
 ```
 
 ---
 
-## 🖥️ 실행 방법
+## 🖥️ 서버 및 웹 UI 가동 방법
 
-이 템플릿은 FastAPI 기반의 백엔드 API 서버, Streamlit 기반의 웹 채팅 UI, 그리고 터미널 기반의 CLI 테스터를 포함하고 있습니다.
+본 프로젝트는 에이전트 마이크로서비스, 백엔드 API, 그리고 대화형 웹 인터페이스로 구성되어 있습니다.
 
-### 1. 백엔드 서버(FastAPI) 가동
-에이전트를 호스팅하는 API 엔드포인트를 구동합니다.
 ```bash
+# 1. Enterprise RAG FastMCP 서버 실행 (포트 8010)
+python app/mcp/enterprise_rag_server.py
+
+# 2. (선택/시나리오3) 외부 Finance FastMCP 서버 실행 (포트 8020)
+python notebooks/example_mcp/finance_mcp_server.py --port 8020
+
+# 3. FastAPI 에이전트 백엔드 서버 실행 (포트 8000)
 python app/server.py --port 8000
-```
-* 서버 실행 후 `http://localhost:8000/docs` 에서 Swagger API 명세서를 통해 테스트할 수 있습니다.
 
-### 2. Streamlit 웹 채팅 UI 가동
-인터랙티브 웹 인터페이스를 구동하여 브라우저에서 대화합니다.
-```bash
+# 4. Streamlit 웹 채팅 UI 실행 (포트 8501)
 streamlit run app/ui.py
 ```
-* 웹 브라우저에서 `http://localhost:8501`에 접속하여 사이드바에서 모델 및 파라미터를 변경하며 채팅할 수 있습니다.
 
-### 3. 터미널 테스트 CLI 가동
-터미널 환경에서 가볍게 에이전트 응답을 테스트합니다.
-```bash
-python app/client.py
-```
-
-### 💬 내가 만든 에이전트를 웹 화면에 바로 추가하여 대화하기
-
-이 프로젝트는 **서버를 껐다 켤 필요 없이, 에이전트 파일만 폴더에 넣으면 웹 화면이 실시간으로 알아채고 에이전트를 추가**해 줍니다. 
-
-실습 도중 나만의 에이전트를 완성했거나 새로 만들고 싶다면, 아래의 3단계만 따라 해 보세요.
-
-#### 1단계. 에이전트 파일 만들기
-`app/agents/` 폴더 안에 원하는 이름으로 파이썬 파일(예: `my_agent.py`)을 새로 만듭니다.
-
-#### 2단계. 에이전트 코드 작성하기 (그대로 복사해서 붙여넣기)
-새로 만든 파일(`my_agent.py`) 안에 아래의 코드를 그대로 복사해서 붙여넣고 저장합니다. 
-
-```python
-# app/agents/my_agent.py
-
-from langchain.agents import create_agent
-from langgraph.checkpoint.memory import MemorySaver
-from langchain_core.tools import tool
-from app.utils import get_llm
-from app.utils.context import AgentContext
-
-# 1) UI에 표시될 에이전트의 소개 정보 (필수)
-AGENT_METADATA = {
-    "name": "my_agent", 
-    "description": "더하기 도구가 탑재된 나만의 실습용 ReAct 에이전트"
-}
-
-# 2) 에이전트가 사용할 실제 도구 정의 (생략 없이 작동 가능한 도구 예시)
-@tool
-def add_numbers(a: int, b: int) -> int:
-    """두 정수 a와 b를 더한 결과를 반환합니다. 더하기 연산이 필요할 때 사용하세요."""
-    return a + b
-
-# 3) 에이전트를 생성하는 함수 (서버가 이 함수를 찾아 실행합니다)
-async def create_agent_executor():
-    # 1. LLM 모델 생성 (Gemini 3.5 Flash 모델 활용)
-    llm = get_llm(model_name="gemini-3.5-flash", temperature=0.0)
-    
-    # 2. 대화 기억 보존을 위한 체크포인터 셋업
-    memory = MemorySaver()
-    
-    # 3. 도구 목록 정의
-    tools = [add_numbers]
-    
-    # 4. 에이전트 최종 구축
-    agent = create_agent(
-        model=llm,
-        tools=tools,
-        checkpointer=memory,
-        context_schema=AgentContext
-    )
-    return agent
-```
-
-#### 3단계. 웹 브라우저 새로고침하고 대화하기
-1. 띄워져 있는 웹 채팅 화면([http://localhost:8501](http://localhost:8501))으로 이동하여 **새로고침(F5)**을 누릅니다.
-2. 왼쪽 메뉴의 **"Select Agent" 드롭다운 상자**를 누르면, 방금 만든 `MY_AGENT`가 실시간으로 감지되어 목록에 추가되어 있습니다.
-3. 해당 에이전트를 선택하고 대화를 시작해 보세요!
-   *(예: "37 더하기 84는 뭐야?" 라고 물어보면 에이전트가 탑재된 `add_numbers` 도구를 호출하여 정상적으로 덧셈 결과를 답변합니다.)*
+* 웹 브라우저에서 **`http://localhost:8501`** 에 접속하여 사이드바에서 `RAG_AGENT`를 선택하고 대화를 시작합니다.
+* FastAPI 백엔드 API 명세서는 `http://localhost:8000/docs` 에서 확인 가능합니다.
 
 ---
 
-## 📂 프로젝트 구조
+## 🧪 실전 3대 테스트 시나리오
+
+| 시나리오 | 질문 예시 | 자율 도구 호출 및 기대 동작 |
+| :--- | :--- | :--- |
+| **1. 사내 규정 감액 기준** | *"과장급 직원이 지방으로 당일 출장을 다녀올 때 일비와 식비 감액 기준(제15조)이 어떻게 되나요?"* | `search_company_policy` 호출 ➔ 제15조 당일 출장 시 일비 50% 감액 및 식비 정액 조항 정확히 도출 |
+| **2. 결재선 & 거시 프로젝트 다중 홉** | *"클라우드운영팀 김철수 수석이 속한 본부의 본부장은 누구이며, 그 본부장이 총괄하는 전사 프로젝트들의 공통 목표는 무엇인가요?"* | `search_graph_relations`(2-Hop 지식그래프) ➔ `query_enterprise_graphrag(search_method="global")` 결합 분석 |
+| **3. 외부 MCP + 내부 RAG 종합** | *"한국은행 보고서의 반도체 산업 동향과 외부 금융 서버의 엔비디아(NVDA) 주가 지표를 종합해서 요약해줘."* | `:8010`의 `search_bok_reports` + `:8020`의 `stock_data` 순차 호출 ➔ 거시 동향과 실시간 주가/재무 지표 종합 리포트 |
+
+---
+
+## 📂 프로젝트 폴더 구조
 
 ```text
-basic_agent/
-├── app/                    # 🧠 핵심 에이전트 애플리케이션 패키지
-│   ├── agents/             #   └── 에이전트 구동기 정의 (chatbot.py, 레지스트리)
-│   ├── prompts/            #   └── 프롬프트 정의 및 관리 (PromptManager)
-│   ├── tools/              #   └── 에이전트 바인딩 도구 (common.py)
-│   ├── utils/              #   └── 중앙 모델 팩토리 및 메시지 헬퍼 (llm.py 등)
-│   ├── server.py           #   └── FastAPI API API 서버
-│   ├── ui.py               #   └── Streamlit 웹 채팅 UI
-│   └── client.py           #   └── 터미널용 대화형 CLI 클라이언트
+Agentic-RAG-course/
+├── app/
+│   ├── agents/
+│   │   ├── chatbot.py                 # 기준 챗봇 (서버/UI 테스트용)
+│   │   └── rag_agent.py               # 🌟 Frontier Agentic RAG 에이전트 (SQLite 영속화)
+│   ├── database/                      # 📦 사전 구축 배포된 4대 엔터프라이즈 RAG DB
+│   │   ├── chroma_db/                 #   ├── 통합 Chroma Vector DB (사규 & BOK 컬렉션)
+│   │   ├── policy_chunks.pkl          #   ├── 사규 Window Expansion 룩업 딕셔너리
+│   │   ├── knowledge_graph_nodelink.json #├── NetworkX NodeLink 지식 그래프
+│   │   └── graphrag/                  #   └── Microsoft GraphRAG 인덱싱 아티팩트
+│   ├── mcp/
+│   │   ├── enterprise_rag_server.py   # 🌐 4대 DB FastMCP Stateless HTTP 마이크로서비스
+│   │   ├── generate_database.py       # 🔨 4대 DB 원천 생성기 (In-place Overwrite 보장)
+│   │   └── test_database.py           # 🔍 4대 DB 독립 검색 무결성 테스트 스크립트
+│   ├── prompts/
+│   │   ├── MCP.md                     # 📋 사내/사외 MCP 서버 엔드포인트 카탈로그
+│   │   └── RAG_PROMPT.md              # 📜 (주)넥스트AI 3단계 점진적 탐색 시스템 프롬프트
+│   ├── tools/
+│   │   └── common.py                  # 🛠️ 3대 범용 원시 도구 (glob_search, file_read, bash_command)
+│   ├── server.py                      # ⚙️ FastAPI 다중 에이전트 서빙 백엔드
+│   └── ui.py                          # 🖥️ Streamlit RAG Agent Lab 웹 채팅 UI
 │
-├── configs/                # ⚙️ 로깅 및 미들웨어 관련 설정
-├── skills/                 # 🛠️ 에이전트 확장용 외부 스킬 모듈
-├── notebooks/              # 📗 프로토타이핑용 Jupyter Notebooks 저장소 (비어있음)
-├── artifacts/              # 📂 로깅 파일 및 산출물 보관함
-├── install/                # 🚀 requirements.txt 및 설치 자원
-└── README.md               # 📖 본 설명서
+├── data/                              # 📄 원천 데이터 (사규 MD, BOK PDF, 조직도 TXT)
+├── notebooks/                         # 📓 4단계 실습 Jupyter Notebooks
+├── skills/mcp/                        # 🧰 Anthropic Agent Skills CLI 스크립트 (list_tools, execute_tool)
+├── Mission.md                         # 🏆 교육생용 4대 단계별 실습 가이드 문서
+└── README.md                          # 📖 본 프로젝트 안내서
 ```
+
+---
+
+## 🌿 브랜치 전략
+
+* **`main`**: 교육생 실습용 스타터 브랜치 (사전 구축 4대 DB, 프롬프트 템플릿, `Mission.md` 실습 가이드 포함)
+* **`instructor`**: 강사용 모범 완성본 브랜치 (`enterprise_rag_server.py`, `rag_agent.py` 및 전체 E2E 테스트 검증 완료)
