@@ -47,16 +47,15 @@ flowchart TD
 
 ## 🚀 빠른 시작 (Quick Start)
 
-### 1. 환경 설정 및 의존성 설치
-로컬 WSL2(우분투) 환경에서 가상환경을 활성화하고 패키지를 설치합니다:
+### 1. 통합 환경 설정 및 의존성 설치 (`install_all.sh`)
+로컬 WSL2(우분투) 환경에서 가상환경 활성화 후 통합 설치 스크립트를 실행합니다. (한글 나눔 폰트, 로케일, Python 패키지 설치 및 `.env` 파일 생성이 자동 수행됩니다.)
 
 ```bash
-# 가상환경 활성화 후 의존성 패키지 설치
-pip install -r install/requirements.txt
+bash install/install_all.sh
 ```
 
 ### 2. 환경 변수 설정 (`.env`)
-프로젝트 루트에 `.env` 파일을 생성하고 Google Gemini 및 필요 API 키를 설정합니다:
+생성된 `.env` 파일에 Google Gemini API 키 및 필요 환경 변수를 입력합니다:
 
 ```env
 GOOGLE_API_KEY="your-gemini-api-key"
@@ -87,16 +86,7 @@ streamlit run app/ui.py
 
 * 웹 브라우저에서 **`http://localhost:8501`** 에 접속하여 사이드바에서 `RAG_AGENT`를 선택하고 대화를 시작합니다.
 * FastAPI 백엔드 API 명세서는 `http://localhost:8000/docs` 에서 확인 가능합니다.
-
----
-
-## 🧪 실전 3대 테스트 시나리오
-
-| 시나리오 | 질문 예시 | 자율 도구 호출 및 기대 동작 |
-| :--- | :--- | :--- |
-| **1. 사내 규정 감액 기준** | *"과장급 직원이 지방으로 당일 출장을 다녀올 때 일비와 식비 감액 기준(제15조)이 어떻게 되나요?"* | `search_company_policy` 호출 ➔ 제15조 당일 출장 시 일비 50% 감액 및 식비 정액 조항 정확히 도출 |
-| **2. 결재선 & 거시 프로젝트 다중 홉** | *"클라우드운영팀 김철수 수석이 속한 본부의 본부장은 누구이며, 그 본부장이 총괄하는 전사 프로젝트들의 공통 목표는 무엇인가요?"* | `search_graph_relations`(2-Hop 지식그래프) ➔ `query_enterprise_graphrag(search_method="global")` 결합 분석 |
-| **3. 외부 MCP + 내부 RAG 종합** | *"한국은행 보고서의 반도체 산업 동향과 외부 금융 서버의 엔비디아(NVDA) 주가 지표를 종합해서 요약해줘."* | `:8010`의 `search_bok_reports` + `:8020`의 `stock_data` 순차 호출 ➔ 거시 동향과 실시간 주가/재무 지표 종합 리포트 |
+* 상세 실전 시나리오 및 단계별 미션 가이드는 [`Mission.md`](Mission.md) 문서를 참고하세요.
 
 ---
 
