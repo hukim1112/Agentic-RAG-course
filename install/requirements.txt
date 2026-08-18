@@ -28,8 +28,9 @@ langchain-chroma==1.1.0
 langgraph-checkpoint-sqlite==3.1.1
 langgraph-checkpoint-postgres==3.1.2
 
-# 3. Vector DB, Persistence & Checkpointing
+# 3. Vector DB, Sparse/Dense Retrieval & Persistence
 chromadb==1.4.0
+rank_bm25>=0.2.2
 aiosqlite
 pysqlite3-binary
 psycopg2-binary==2.9.11
@@ -45,6 +46,7 @@ pyyaml>=6.0.1
 # 5. FastMCP Microservices & Web/Finance Tools (Lab 3 & Mission)
 fastmcp==3.4.7
 langchain-mcp-adapters>=0.1.0
+requests>=2.31.0
 httpx==0.28.1
 sse-starlette==3.4.8
 yfinance>=1.0.0
