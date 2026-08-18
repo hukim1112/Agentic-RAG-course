@@ -1,0 +1,349 @@
+<html>
+    <head>
+        <meta charset="utf-8">
+        
+            <script>function neighbourhoodHighlight(params) {
+  // console.log("in nieghbourhoodhighlight");
+  allNodes = nodes.get({ returnType: "Object" });
+  // originalNodes = JSON.parse(JSON.stringify(allNodes));
+  // if something is selected:
+  if (params.nodes.length > 0) {
+    highlightActive = true;
+    var i, j;
+    var selectedNode = params.nodes[0];
+    var degrees = 2;
+
+    // mark all nodes as hard to read.
+    for (let nodeId in allNodes) {
+      // nodeColors[nodeId] = allNodes[nodeId].color;
+      allNodes[nodeId].color = "rgba(200,200,200,0.5)";
+      if (allNodes[nodeId].hiddenLabel === undefined) {
+        allNodes[nodeId].hiddenLabel = allNodes[nodeId].label;
+        allNodes[nodeId].label = undefined;
+      }
+    }
+    var connectedNodes = network.getConnectedNodes(selectedNode);
+    var allConnectedNodes = [];
+
+    // get the second degree nodes
+    for (i = 1; i < degrees; i++) {
+      for (j = 0; j < connectedNodes.length; j++) {
+        allConnectedNodes = allConnectedNodes.concat(
+          network.getConnectedNodes(connectedNodes[j])
+        );
+      }
+    }
+
+    // all second degree nodes get a different color and their label back
+    for (i = 0; i < allConnectedNodes.length; i++) {
+      // allNodes[allConnectedNodes[i]].color = "pink";
+      allNodes[allConnectedNodes[i]].color = "rgba(150,150,150,0.75)";
+      if (allNodes[allConnectedNodes[i]].hiddenLabel !== undefined) {
+        allNodes[allConnectedNodes[i]].label =
+          allNodes[allConnectedNodes[i]].hiddenLabel;
+        allNodes[allConnectedNodes[i]].hiddenLabel = undefined;
+      }
+    }
+
+    // all first degree nodes get their own color and their label back
+    for (i = 0; i < connectedNodes.length; i++) {
+      // allNodes[connectedNodes[i]].color = undefined;
+      allNodes[connectedNodes[i]].color = nodeColors[connectedNodes[i]];
+      if (allNodes[connectedNodes[i]].hiddenLabel !== undefined) {
+        allNodes[connectedNodes[i]].label =
+          allNodes[connectedNodes[i]].hiddenLabel;
+        allNodes[connectedNodes[i]].hiddenLabel = undefined;
+      }
+    }
+
+    // the main node gets its own color and its label back.
+    // allNodes[selectedNode].color = undefined;
+    allNodes[selectedNode].color = nodeColors[selectedNode];
+    if (allNodes[selectedNode].hiddenLabel !== undefined) {
+      allNodes[selectedNode].label = allNodes[selectedNode].hiddenLabel;
+      allNodes[selectedNode].hiddenLabel = undefined;
+    }
+  } else if (highlightActive === true) {
+    // console.log("highlightActive was true");
+    // reset all nodes
+    for (let nodeId in allNodes) {
+      // allNodes[nodeId].color = "purple";
+      allNodes[nodeId].color = nodeColors[nodeId];
+      // delete allNodes[nodeId].color;
+      if (allNodes[nodeId].hiddenLabel !== undefined) {
+        allNodes[nodeId].label = allNodes[nodeId].hiddenLabel;
+        allNodes[nodeId].hiddenLabel = undefined;
+      }
+    }
+    highlightActive = false;
+  }
+
+  // transform the object into an array
+  var updateArray = [];
+  if (params.nodes.length > 0) {
+    for (let nodeId in allNodes) {
+      if (allNodes.hasOwnProperty(nodeId)) {
+        // console.log(allNodes[nodeId]);
+        updateArray.push(allNodes[nodeId]);
+      }
+    }
+    nodes.update(updateArray);
+  } else {
+    // console.log("Nothing was selected");
+    for (let nodeId in allNodes) {
+      if (allNodes.hasOwnProperty(nodeId)) {
+        // console.log(allNodes[nodeId]);
+        // allNodes[nodeId].color = {};
+        updateArray.push(allNodes[nodeId]);
+      }
+    }
+    nodes.update(updateArray);
+  }
+}
+
+function filterHighlight(params) {
+  allNodes = nodes.get({ returnType: "Object" });
+  // if something is selected:
+  if (params.nodes.length > 0) {
+    filterActive = true;
+    let selectedNodes = params.nodes;
+
+    // hiding all nodes and saving the label
+    for (let nodeId in allNodes) {
+      allNodes[nodeId].hidden = true;
+      if (allNodes[nodeId].savedLabel === undefined) {
+        allNodes[nodeId].savedLabel = allNodes[nodeId].label;
+        allNodes[nodeId].label = undefined;
+      }
+    }
+
+    for (let i=0; i < selectedNodes.length; i++) {
+      allNodes[selectedNodes[i]].hidden = false;
+      if (allNodes[selectedNodes[i]].savedLabel !== undefined) {
+        allNodes[selectedNodes[i]].label = allNodes[selectedNodes[i]].savedLabel;
+        allNodes[selectedNodes[i]].savedLabel = undefined;
+      }
+    }
+
+  } else if (filterActive === true) {
+    // reset all nodes
+    for (let nodeId in allNodes) {
+      allNodes[nodeId].hidden = false;
+      if (allNodes[nodeId].savedLabel !== undefined) {
+        allNodes[nodeId].label = allNodes[nodeId].savedLabel;
+        allNodes[nodeId].savedLabel = undefined;
+      }
+    }
+    filterActive = false;
+  }
+
+  // transform the object into an array
+  var updateArray = [];
+  if (params.nodes.length > 0) {
+    for (let nodeId in allNodes) {
+      if (allNodes.hasOwnProperty(nodeId)) {
+        updateArray.push(allNodes[nodeId]);
+      }
+    }
+    nodes.update(updateArray);
+  } else {
+    for (let nodeId in allNodes) {
+      if (allNodes.hasOwnProperty(nodeId)) {
+        updateArray.push(allNodes[nodeId]);
+      }
+    }
+    nodes.update(updateArray);
+  }
+}
+
+function selectNode(nodes) {
+  network.selectNodes(nodes);
+  neighbourhoodHighlight({ nodes: nodes });
+  return nodes;
+}
+
+function selectNodes(nodes) {
+  network.selectNodes(nodes);
+  filterHighlight({nodes: nodes});
+  return nodes;
+}
+
+function highlightFilter(filter) {
+  let selectedNodes = []
+  let selectedProp = filter['property']
+  if (filter['item'] === 'node') {
+    let allNodes = nodes.get({ returnType: "Object" });
+    for (let nodeId in allNodes) {
+      if (allNodes[nodeId][selectedProp] && filter['value'].includes((allNodes[nodeId][selectedProp]).toString())) {
+        selectedNodes.push(nodeId)
+      }
+    }
+  }
+  else if (filter['item'] === 'edge'){
+    let allEdges = edges.get({returnType: 'object'});
+    // check if the selected property exists for selected edge and select the nodes connected to the edge
+    for (let edge in allEdges) {
+      if (allEdges[edge][selectedProp] && filter['value'].includes((allEdges[edge][selectedProp]).toString())) {
+        selectedNodes.push(allEdges[edge]['from'])
+        selectedNodes.push(allEdges[edge]['to'])
+      }
+    }
+  }
+  selectNodes(selectedNodes)
+}</script>
+            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/dist/dist/vis-network.min.css" integrity="sha512-WgxfT5LWjfszlPHXRmBWHkV2eceiWTOBvrKCNbdgDYTHrT2AeLCGbF4sZlZw3UMN3WtL0tGUoIAKsu8mllg/XA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/dist/vis-network.min.js" integrity="sha512-LnvoEWDFrqGHlHmDD2101OrLcbsfkrzoSpvtSQtxK3RMnRV0eOkhhBN2dXHKRrUU8p2DGRTk35n4O8nWSVe1mQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+            
+            
+            
+            
+            
+            
+
+        
+<center>
+<h1></h1>
+</center>
+
+<!-- <link rel="stylesheet" href="../node_modules/vis/dist/vis.min.css" type="text/css" />
+<script type="text/javascript" src="../node_modules/vis/dist/vis.js"> </script>-->
+        <link
+          href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta3/dist/css/bootstrap.min.css"
+          rel="stylesheet"
+          integrity="sha384-eOJMYsd53ii+scO/bJGFsiCZc+5NDVN2yr8+0RDqr0Ql0h+rP48ckxlpbzKgwra6"
+          crossorigin="anonymous"
+        />
+        <script
+          src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta3/dist/js/bootstrap.bundle.min.js"
+          integrity="sha384-JEW9xMcG8R+pH31jmWH6WWP0WintQrMb4s7ZOdauHnUtxwoG2vI5DkLtS3qm9Ekf"
+          crossorigin="anonymous"
+        ></script>
+
+
+        <center>
+          <h1></h1>
+        </center>
+        <style type="text/css">
+
+             #mynetwork {
+                 width: 100%;
+                 height: 550px;
+                 background-color: #1a1b26;
+                 border: 1px solid lightgray;
+                 position: relative;
+                 float: left;
+             }
+
+             
+
+             
+
+             
+        </style>
+    </head>
+
+
+    <body>
+        <div class="card" style="width: 100%">
+            
+            
+            <div id="mynetwork" class="card-body"></div>
+        </div>
+
+        
+        
+
+        <script type="text/javascript">
+
+              // initialize global variables.
+              var edges;
+              var nodes;
+              var allNodes;
+              var allEdges;
+              var nodeColors;
+              var originalNodes;
+              var network;
+              var container;
+              var options, data;
+              var filter = {
+                  item : '',
+                  property : '',
+                  value : []
+              };
+
+              
+
+              
+
+              // This method is responsible for drawing the graph, returns the drawn network
+              function drawGraph() {
+                  var container = document.getElementById('mynetwork');
+
+                  
+
+                  // parsing and collecting nodes and edges from the python
+                  nodes = new vis.DataSet([{"color": "#7aa2f7", "font": {"color": "#ffffff"}, "id": "\ud074\ub77c\uc6b0\ub4dc\uc0ac\uc5c5\ubcf8\ubd80", "label": "\ud074\ub77c\uc6b0\ub4dc\uc0ac\uc5c5\ubcf8\ubd80", "shape": "dot", "size": 25}, {"color": "#9ece6a", "font": {"color": "#ffffff"}, "id": "\ubc15\uc601\ud76c \uc804\ubb34", "label": "\ubc15\uc601\ud76c \uc804\ubb34", "shape": "dot", "size": 22}, {"color": "#7aa2f7", "font": {"color": "#ffffff"}, "id": "\ud074\ub77c\uc6b0\ub4dc\uc6b4\uc601\ud300", "label": "\ud074\ub77c\uc6b0\ub4dc\uc6b4\uc601\ud300", "shape": "dot", "size": 25}, {"color": "#7aa2f7", "font": {"color": "#ffffff"}, "id": "\uc778\ud504\ub77c\uc5d4\uc9c0\ub2c8\uc5b4\ub9c1\ud300", "label": "\uc778\ud504\ub77c\uc5d4\uc9c0\ub2c8\uc5b4\ub9c1\ud300", "shape": "dot", "size": 25}, {"color": "#9ece6a", "font": {"color": "#ffffff"}, "id": "\uae40\ucca0\uc218 \uc218\uc11d", "label": "\uae40\ucca0\uc218 \uc218\uc11d", "shape": "dot", "size": 22}, {"color": "#9ece6a", "font": {"color": "#ffffff"}, "id": "\uc774\uc120\uc784 \uc120\uc784\uc5d4\uc9c0\ub2c8\uc5b4", "label": "\uc774\uc120\uc784 \uc120\uc784\uc5d4\uc9c0\ub2c8\uc5b4", "shape": "dot", "size": 22}, {"color": "#9ece6a", "font": {"color": "#ffffff"}, "id": "\ucd5c\ucc45\uc784 \ucc45\uc784\uc5d4\uc9c0\ub2c8\uc5b4", "label": "\ucd5c\ucc45\uc784 \ucc45\uc784\uc5d4\uc9c0\ub2c8\uc5b4", "shape": "dot", "size": 22}, {"color": "#9ece6a", "font": {"color": "#ffffff"}, "id": "\uc815\uc218\uc11d \uc218\uc11d", "label": "\uc815\uc218\uc11d \uc218\uc11d", "shape": "dot", "size": 22}, {"color": "#9ece6a", "font": {"color": "#ffffff"}, "id": "\uac15\uc5d4\uc9c0\ub2c8\uc5b4 \uc120\uc784", "label": "\uac15\uc5d4\uc9c0\ub2c8\uc5b4 \uc120\uc784", "shape": "dot", "size": 22}, {"color": "#9ece6a", "font": {"color": "#ffffff"}, "id": "\uc870\uc5d4\uc9c0\ub2c8\uc5b4 \ucc45\uc784", "label": "\uc870\uc5d4\uc9c0\ub2c8\uc5b4 \ucc45\uc784", "shape": "dot", "size": 22}, {"color": "#7aa2f7", "font": {"color": "#ffffff"}, "id": "AI\ud601\uc2e0\ubcf8\ubd80", "label": "AI\ud601\uc2e0\ubcf8\ubd80", "shape": "dot", "size": 25}, {"color": "#7aa2f7", "font": {"color": "#ffffff"}, "id": "\uc1a1\ubcf8\ubd80\uc7a5 \uc0c1\ubb34", "label": "\uc1a1\ubcf8\ubd80\uc7a5 \uc0c1\ubb34", "shape": "dot", "size": 25}, {"color": "#7aa2f7", "font": {"color": "#ffffff"}, "id": "AgenticAI\ud300", "label": "AgenticAI\ud300", "shape": "dot", "size": 25}, {"color": "#7aa2f7", "font": {"color": "#ffffff"}, "id": "\ub370\uc774\ud130\ud50c\ub7ab\ud3fc\ud300", "label": "\ub370\uc774\ud130\ud50c\ub7ab\ud3fc\ud300", "shape": "dot", "size": 25}, {"color": "#7aa2f7", "font": {"color": "#ffffff"}, "id": "\ud64d\ud300\uc7a5 \uc218\uc11d", "label": "\ud64d\ud300\uc7a5 \uc218\uc11d", "shape": "dot", "size": 25}, {"color": "#9ece6a", "font": {"color": "#ffffff"}, "id": "\uc724\uc5d0\uc774\uc804\ud2b8 \ucc45\uc784", "label": "\uc724\uc5d0\uc774\uc804\ud2b8 \ucc45\uc784", "shape": "dot", "size": 22}, {"color": "#9ece6a", "font": {"color": "#ffffff"}, "id": "\uc7a5LLM \uc120\uc784", "label": "\uc7a5LLM \uc120\uc784", "shape": "dot", "size": 22}, {"color": "#9ece6a", "font": {"color": "#ffffff"}, "id": "\uc720\uc218\uc11d \uc218\uc11d", "label": "\uc720\uc218\uc11d \uc218\uc11d", "shape": "dot", "size": 22}, {"color": "#9ece6a", "font": {"color": "#ffffff"}, "id": "\uc784\ub370\uc774\ud130 \ucc45\uc784", "label": "\uc784\ub370\uc774\ud130 \ucc45\uc784", "shape": "dot", "size": 22}, {"color": "#7aa2f7", "font": {"color": "#ffffff"}, "id": "\uacbd\uc601\uc9c0\uc6d0\ubcf8\ubd80", "label": "\uacbd\uc601\uc9c0\uc6d0\ubcf8\ubd80", "shape": "dot", "size": 25}, {"color": "#7aa2f7", "font": {"color": "#ffffff"}, "id": "\ud55c\ubcf8\ubd80\uc7a5 \uc804\ubb34", "label": "\ud55c\ubcf8\ubd80\uc7a5 \uc804\ubb34", "shape": "dot", "size": 25}, {"color": "#7aa2f7", "font": {"color": "#ffffff"}, "id": "\uc778\uc0ac\uae30\ud68d\ud300", "label": "\uc778\uc0ac\uae30\ud68d\ud300", "shape": "dot", "size": 25}, {"color": "#7aa2f7", "font": {"color": "#ffffff"}, "id": "\uc7ac\ubb34\uad00\ub9ac\ud300", "label": "\uc7ac\ubb34\uad00\ub9ac\ud300", "shape": "dot", "size": 25}, {"color": "#7aa2f7", "font": {"color": "#ffffff"}, "id": "\uc624\ud300\uc7a5 \uc218\uc11d", "label": "\uc624\ud300\uc7a5 \uc218\uc11d", "shape": "dot", "size": 25}, {"color": "#7aa2f7", "font": {"color": "#ffffff"}, "id": "\uad8c\ud300\uc7a5 \uc218\uc11d", "label": "\uad8c\ud300\uc7a5 \uc218\uc11d", "shape": "dot", "size": 25}, {"color": "#7aa2f7", "font": {"color": "#ffffff"}, "id": "\ud300\uc6d0", "label": "\ud300\uc6d0", "shape": "dot", "size": 25}, {"color": "#7aa2f7", "font": {"color": "#ffffff"}, "id": "\uc9c1\uc18d \ud300\uc7a5", "label": "\uc9c1\uc18d \ud300\uc7a5", "shape": "dot", "size": 25}, {"color": "#7aa2f7", "font": {"color": "#ffffff"}, "id": "\ud300\uc7a5", "label": "\ud300\uc7a5", "shape": "dot", "size": 25}, {"color": "#f7768e", "font": {"color": "#ffffff"}, "id": "5,000\ub9cc\uc6d0 \ubbf8\ub9cc \uc77c\ubc18 \ud504\ub85c\uc81d\ud2b8 \uc608\uc0b0 \ubc0f \ubd80\uc11c \uc6b4\uc601\ube44", "label": "5,000\ub9cc\uc6d0 \ubbf8\ub9cc \uc77c\ubc18 \ud504\ub85c\uc81d\ud2b8 \uc608\uc0b0 \ubc0f \ubd80\uc11c \uc6b4\uc601\ube44", "shape": "dot", "size": 28}, {"color": "#7aa2f7", "font": {"color": "#ffffff"}, "id": "\ubcf8\ubd80\uc7a5", "label": "\ubcf8\ubd80\uc7a5", "shape": "dot", "size": 25}, {"color": "#f7768e", "font": {"color": "#ffffff"}, "id": "5,000\ub9cc\uc6d0 \uc774\uc0c1 5\uc5b5\uc6d0 \ubbf8\ub9cc \uc804\ub7b5 \ud504\ub85c\uc81d\ud2b8 \uc608\uc0b0 \ubc0f \uacc4\uc57d", "label": "5,000\ub9cc\uc6d0 \uc774\uc0c1 5\uc5b5\uc6d0 \ubbf8\ub9cc \uc804\ub7b5 \ud504\ub85c\uc81d\ud2b8 \uc608\uc0b0 \ubc0f \uacc4\uc57d", "shape": "dot", "size": 28}, {"color": "#9ece6a", "font": {"color": "#ffffff"}, "id": "\ub300\ud45c\uc774\uc0ac \ubc0f CFO", "label": "\ub300\ud45c\uc774\uc0ac \ubc0f CFO", "shape": "dot", "size": 22}, {"color": "#e0af68", "font": {"color": "#ffffff"}, "id": "5\uc5b5\uc6d0 \uc774\uc0c1 \uc804\uc0ac \ud575\uc2ec \uc778\ud504\ub77c \ud22c\uc790 \ubc0f \uc2e0\uaddc \uc0ac\uc5c5 \uc608\uc0b0", "label": "5\uc5b5\uc6d0 \uc774\uc0c1 \uc804\uc0ac \ud575\uc2ec \uc778\ud504\ub77c \ud22c\uc790 \ubc0f \uc2e0\uaddc \uc0ac\uc5c5 \uc608\uc0b0", "shape": "dot", "size": 18}, {"color": "#7aa2f7", "font": {"color": "#ffffff"}, "id": "\uae40\ucca0\uc218 \ud300\uc7a5", "label": "\uae40\ucca0\uc218 \ud300\uc7a5", "shape": "dot", "size": 25}, {"color": "#7aa2f7", "font": {"color": "#ffffff"}, "id": "\ubc15\uc601\ud76c \ubcf8\ubd80\uc7a5", "label": "\ubc15\uc601\ud76c \ubcf8\ubd80\uc7a5", "shape": "dot", "size": 25}, {"color": "#7aa2f7", "font": {"color": "#ffffff"}, "id": "\ud64d\ud300\uc7a5", "label": "\ud64d\ud300\uc7a5", "shape": "dot", "size": 25}, {"color": "#f7768e", "font": {"color": "#ffffff"}, "id": "P-01: \ud074\ub77c\uc6b0\ub4dc \ub124\uc774\ud2f0\ube0c \ub9c8\uc774\uadf8\ub808\uc774\uc158", "label": "P-01: \ud074\ub77c\uc6b0\ub4dc \ub124\uc774\ud2f0\ube0c \ub9c8\uc774\uadf8\ub808\uc774\uc158", "shape": "dot", "size": 28}, {"color": "#9ece6a", "font": {"color": "#ffffff"}, "id": "\uc774\uc120\uc784 \uc120\uc784", "label": "\uc774\uc120\uc784 \uc120\uc784", "shape": "dot", "size": 22}, {"color": "#e0af68", "font": {"color": "#ffffff"}, "id": "\uae30\uc874 \ub808\uac70\uc2dc \uc628\ud504\ub808\ubbf8\uc2a4 \uc778\ud504\ub77c\ub97c \ud558\uc774\ube0c\ub9ac\ub4dc \uba40\ud2f0\ud074\ub77c\uc6b0\ub4dc \ud658\uacbd\uc73c\ub85c \uc644\uc804 \uc804\ud658", "label": "\uae30\uc874 \ub808\uac70\uc2dc \uc628\ud504\ub808\ubbf8\uc2a4 \uc778\ud504\ub77c\ub97c \ud558\uc774\ube0c\ub9ac\ub4dc \uba40\ud2f0\ud074\ub77c\uc6b0\ub4dc \ud658\uacbd\uc73c\ub85c \uc644\uc804 \uc804\ud658", "shape": "dot", "size": 18}, {"color": "#e0af68", "font": {"color": "#ffffff"}, "id": "3\uc5b5 5,000\ub9cc\uc6d0", "label": "3\uc5b5 5,000\ub9cc\uc6d0", "shape": "dot", "size": 18}, {"color": "#e0af68", "font": {"color": "#ffffff"}, "id": "\uc804\ud658 \uacfc\uc815 \uc911 \ub2e4\uc6b4\ud0c0\uc784 \ucd5c\uc18c\ud654 \ubc0f \uae08\uc735 \ubcf4\uc548 \uaddc\uc815 \uc900\uc218", "label": "\uc804\ud658 \uacfc\uc815 \uc911 \ub2e4\uc6b4\ud0c0\uc784 \ucd5c\uc18c\ud654 \ubc0f \uae08\uc735 \ubcf4\uc548 \uaddc\uc815 \uc900\uc218", "shape": "dot", "size": 18}, {"color": "#f7768e", "font": {"color": "#ffffff"}, "id": "P-02: \uc5d4\ud130\ud504\ub77c\uc774\uc988 Agentic RAG \ud50c\ub7ab\ud3fc \uad6c\ucd95", "label": "P-02: \uc5d4\ud130\ud504\ub77c\uc774\uc988 Agentic RAG \ud50c\ub7ab\ud3fc \uad6c\ucd95", "shape": "dot", "size": 28}, {"color": "#9ece6a", "font": {"color": "#ffffff"}, "id": "\ucd5c\ucc45\uc784 \ucc45\uc784", "label": "\ucd5c\ucc45\uc784 \ucc45\uc784", "shape": "dot", "size": 22}, {"color": "#e0af68", "font": {"color": "#ffffff"}, "id": "\uc0ac\ub0b4 \uc815\ud615/\ube44\uc815\ud615/\uadf8\ub798\ud504 \ub370\uc774\ud130\ub97c \ud1b5\ud569 \uc5f0\ub3d9\ud558\ub294 \uc9c0\ub2a5\ud615 \uc5d0\uc774\uc804\ud2f1 RAG \uc544\ud0a4\ud14d\ucc98 \uad6c\ucd95", "label": "\uc0ac\ub0b4 \uc815\ud615/\ube44\uc815\ud615/\uadf8\ub798\ud504 \ub370\uc774\ud130\ub97c \ud1b5\ud569 \uc5f0\ub3d9\ud558\ub294 \uc9c0\ub2a5\ud615 \uc5d0\uc774\uc804\ud2f1 RAG \uc544\ud0a4\ud14d\ucc98 \uad6c\ucd95", "shape": "dot", "size": 18}, {"color": "#e0af68", "font": {"color": "#ffffff"}, "id": "4\uc5b5 8,000\ub9cc\uc6d0", "label": "4\uc5b5 8,000\ub9cc\uc6d0", "shape": "dot", "size": 18}, {"color": "#e0af68", "font": {"color": "#ffffff"}, "id": "\ubcf5\ud569 \uc9c8\uc758 \ucc98\ub9ac \uc9c0\uc5f0\uc2dc\uac04 \ubc0f \uc774\uc885 \ub370\uc774\ud130 \uc18c\uc2a4 \uac04 \ud658\uac01 \ubc29\uc9c0", "label": "\ubcf5\ud569 \uc9c8\uc758 \ucc98\ub9ac \uc9c0\uc5f0\uc2dc\uac04 \ubc0f \uc774\uc885 \ub370\uc774\ud130 \uc18c\uc2a4 \uac04 \ud658\uac01 \ubc29\uc9c0", "shape": "dot", "size": 18}, {"color": "#f7768e", "font": {"color": "#ffffff"}, "id": "P-03: \ucc28\uc138\ub300 AI \ub370\uc774\ud130 \uac70\ubc84\ub10c\uc2a4", "label": "P-03: \ucc28\uc138\ub300 AI \ub370\uc774\ud130 \uac70\ubc84\ub10c\uc2a4", "shape": "dot", "size": 28}, {"color": "#9ece6a", "font": {"color": "#ffffff"}, "id": "\uc720\uc218\uc11d", "label": "\uc720\uc218\uc11d", "shape": "dot", "size": 22}, {"color": "#e0af68", "font": {"color": "#ffffff"}, "id": "\uc0ac\ub0b4 \ubbfc\uac10 \ub370\uc774\ud130 \uc2dd\ubcc4 \ubc0f \uc2e4\uc2dc\uac04 \uc811\uadfc \ud1b5\uc81c \uccb4\uacc4 \uad6c\ucd95", "label": "\uc0ac\ub0b4 \ubbfc\uac10 \ub370\uc774\ud130 \uc2dd\ubcc4 \ubc0f \uc2e4\uc2dc\uac04 \uc811\uadfc \ud1b5\uc81c \uccb4\uacc4 \uad6c\ucd95", "shape": "dot", "size": 18}, {"color": "#e0af68", "font": {"color": "#ffffff"}, "id": "2\uc5b5 2,000\ub9cc\uc6d0", "label": "2\uc5b5 2,000\ub9cc\uc6d0", "shape": "dot", "size": 18}, {"color": "#e0af68", "font": {"color": "#ffffff"}, "id": "\ubc95\uc801 \ucef4\ud50c\ub77c\uc774\uc5b8\uc2a4 \ubcc0\uacbd \ubc0f \uac1c\uc778\uc815\ubcf4\ubcf4\ud638\ubc95 \uac15\ud654 \ub300\uc751", "label": "\ubc95\uc801 \ucef4\ud50c\ub77c\uc774\uc5b8\uc2a4 \ubcc0\uacbd \ubc0f \uac1c\uc778\uc815\ubcf4\ubcf4\ud638\ubc95 \uac15\ud654 \ub300\uc751", "shape": "dot", "size": 18}, {"color": "#f7768e", "font": {"color": "#ffffff"}, "id": "\uc804\ub7b5 \ud504\ub85c\uc81d\ud2b8 \uc608\uc0b0 \uc9d1\ud589 \ubc0f \uc815\uc0b0", "label": "\uc804\ub7b5 \ud504\ub85c\uc81d\ud2b8 \uc608\uc0b0 \uc9d1\ud589 \ubc0f \uc815\uc0b0", "shape": "dot", "size": 28}, {"color": "#7aa2f7", "font": {"color": "#ffffff"}, "id": "\uc7ac\ubb34\uad00\ub9ac\ud300 \uad8c\ud300\uc7a5", "label": "\uc7ac\ubb34\uad00\ub9ac\ud300 \uad8c\ud300\uc7a5", "shape": "dot", "size": 25}]);
+                  edges = new vis.DataSet([{"arrows": "to", "color": "#565f89", "from": "\ud074\ub77c\uc6b0\ub4dc\uc0ac\uc5c5\ubcf8\ubd80", "label": "\ubcf8\ubd80\uc7a5", "to": "\ubc15\uc601\ud76c \uc804\ubb34"}, {"arrows": "to", "color": "#565f89", "from": "\ud074\ub77c\uc6b0\ub4dc\uc0ac\uc5c5\ubcf8\ubd80", "label": "\uc0b0\ud558\uc870\uc9c1", "to": "\ud074\ub77c\uc6b0\ub4dc\uc6b4\uc601\ud300"}, {"arrows": "to", "color": "#565f89", "from": "\ud074\ub77c\uc6b0\ub4dc\uc0ac\uc5c5\ubcf8\ubd80", "label": "\uc0b0\ud558\uc870\uc9c1", "to": "\uc778\ud504\ub77c\uc5d4\uc9c0\ub2c8\uc5b4\ub9c1\ud300"}, {"arrows": "to", "color": "#565f89", "from": "\ud074\ub77c\uc6b0\ub4dc\uc6b4\uc601\ud300", "label": "\ud300\uc7a5", "to": "\uae40\ucca0\uc218 \uc218\uc11d"}, {"arrows": "to", "color": "#565f89", "from": "\ud074\ub77c\uc6b0\ub4dc\uc6b4\uc601\ud300", "label": "\uc18c\uc18d\ud300\uc6d0", "to": "\uc774\uc120\uc784 \uc120\uc784\uc5d4\uc9c0\ub2c8\uc5b4"}, {"arrows": "to", "color": "#565f89", "from": "\ud074\ub77c\uc6b0\ub4dc\uc6b4\uc601\ud300", "label": "\uc18c\uc18d\ud300\uc6d0", "to": "\ucd5c\ucc45\uc784 \ucc45\uc784\uc5d4\uc9c0\ub2c8\uc5b4"}, {"arrows": "to", "color": "#565f89", "from": "\ud074\ub77c\uc6b0\ub4dc\uc6b4\uc601\ud300", "label": "\uae30\uc220 \ud611\uc758\uccb4 \uc6b4\uc601 \ub300\uc0c1", "to": "\ub370\uc774\ud130\ud50c\ub7ab\ud3fc\ud300"}, {"arrows": "to", "color": "#565f89", "from": "\uc778\ud504\ub77c\uc5d4\uc9c0\ub2c8\uc5b4\ub9c1\ud300", "label": "\ud300\uc7a5", "to": "\uc815\uc218\uc11d \uc218\uc11d"}, {"arrows": "to", "color": "#565f89", "from": "\uc778\ud504\ub77c\uc5d4\uc9c0\ub2c8\uc5b4\ub9c1\ud300", "label": "\uc18c\uc18d\ud300\uc6d0", "to": "\uac15\uc5d4\uc9c0\ub2c8\uc5b4 \uc120\uc784"}, {"arrows": "to", "color": "#565f89", "from": "\uc778\ud504\ub77c\uc5d4\uc9c0\ub2c8\uc5b4\ub9c1\ud300", "label": "\uc18c\uc18d\ud300\uc6d0", "to": "\uc870\uc5d4\uc9c0\ub2c8\uc5b4 \ucc45\uc784"}, {"arrows": "to", "color": "#565f89", "from": "AI\ud601\uc2e0\ubcf8\ubd80", "label": "\ubcf8\ubd80\uc7a5", "to": "\uc1a1\ubcf8\ubd80\uc7a5 \uc0c1\ubb34"}, {"arrows": "to", "color": "#565f89", "from": "AI\ud601\uc2e0\ubcf8\ubd80", "label": "\uc0b0\ud558\uc870\uc9c1", "to": "AgenticAI\ud300"}, {"arrows": "to", "color": "#565f89", "from": "AI\ud601\uc2e0\ubcf8\ubd80", "label": "\uc0b0\ud558\uc870\uc9c1", "to": "\ub370\uc774\ud130\ud50c\ub7ab\ud3fc\ud300"}, {"arrows": "to", "color": "#565f89", "from": "AgenticAI\ud300", "label": "\ud300\uc7a5", "to": "\ud64d\ud300\uc7a5 \uc218\uc11d"}, {"arrows": "to", "color": "#565f89", "from": "AgenticAI\ud300", "label": "\uc18c\uc18d\ud300\uc6d0", "to": "\uc724\uc5d0\uc774\uc804\ud2b8 \ucc45\uc784"}, {"arrows": "to", "color": "#565f89", "from": "AgenticAI\ud300", "label": "\uc18c\uc18d\ud300\uc6d0", "to": "\uc7a5LLM \uc120\uc784"}, {"arrows": "to", "color": "#565f89", "from": "AgenticAI\ud300", "label": "\uc778\ub825 \ud30c\uacac \ud611\uc5c5 \ubd80\uc11c", "to": "\ud074\ub77c\uc6b0\ub4dc\uc6b4\uc601\ud300"}, {"arrows": "to", "color": "#565f89", "from": "\ub370\uc774\ud130\ud50c\ub7ab\ud3fc\ud300", "label": "\ud300\uc7a5", "to": "\uc720\uc218\uc11d \uc218\uc11d"}, {"arrows": "to", "color": "#565f89", "from": "\ub370\uc774\ud130\ud50c\ub7ab\ud3fc\ud300", "label": "\uc18c\uc18d\ud300\uc6d0", "to": "\uc784\ub370\uc774\ud130 \ucc45\uc784"}, {"arrows": "to", "color": "#565f89", "from": "\uacbd\uc601\uc9c0\uc6d0\ubcf8\ubd80", "label": "\ubcf8\ubd80\uc7a5", "to": "\ud55c\ubcf8\ubd80\uc7a5 \uc804\ubb34"}, {"arrows": "to", "color": "#565f89", "from": "\uacbd\uc601\uc9c0\uc6d0\ubcf8\ubd80", "label": "\uc0b0\ud558\uc870\uc9c1", "to": "\uc778\uc0ac\uae30\ud68d\ud300"}, {"arrows": "to", "color": "#565f89", "from": "\uacbd\uc601\uc9c0\uc6d0\ubcf8\ubd80", "label": "\uc0b0\ud558\uc870\uc9c1", "to": "\uc7ac\ubb34\uad00\ub9ac\ud300"}, {"arrows": "to", "color": "#565f89", "from": "\uc778\uc0ac\uae30\ud68d\ud300", "label": "\ud300\uc7a5", "to": "\uc624\ud300\uc7a5 \uc218\uc11d"}, {"arrows": "to", "color": "#565f89", "from": "\uc7ac\ubb34\uad00\ub9ac\ud300", "label": "\ud300\uc7a5", "to": "\uad8c\ud300\uc7a5 \uc218\uc11d"}, {"arrows": "to", "color": "#565f89", "from": "\ud300\uc6d0", "label": "1\ucc28 \uacb0\uc7ac\uc120", "to": "\uc9c1\uc18d \ud300\uc7a5"}, {"arrows": "to", "color": "#565f89", "from": "\ud300\uc7a5", "label": "\uc804\uacb0 \uc2b9\uc778 \ubc94\uc704", "to": "5,000\ub9cc\uc6d0 \ubbf8\ub9cc \uc77c\ubc18 \ud504\ub85c\uc81d\ud2b8 \uc608\uc0b0 \ubc0f \ubd80\uc11c \uc6b4\uc601\ube44"}, {"arrows": "to", "color": "#565f89", "from": "\ubcf8\ubd80\uc7a5", "label": "\ucd5c\uc885 \uc2b9\uc778 \ubc94\uc704", "to": "5,000\ub9cc\uc6d0 \uc774\uc0c1 5\uc5b5\uc6d0 \ubbf8\ub9cc \uc804\ub7b5 \ud504\ub85c\uc81d\ud2b8 \uc608\uc0b0 \ubc0f \uacc4\uc57d"}, {"arrows": "to", "color": "#565f89", "from": "\ub300\ud45c\uc774\uc0ac \ubc0f CFO", "label": "\ucd5c\uc885 \uc2b9\uc778 \ubc94\uc704", "to": "5\uc5b5\uc6d0 \uc774\uc0c1 \uc804\uc0ac \ud575\uc2ec \uc778\ud504\ub77c \ud22c\uc790 \ubc0f \uc2e0\uaddc \uc0ac\uc5c5 \uc608\uc0b0"}, {"arrows": "to", "color": "#565f89", "from": "\uae40\ucca0\uc218 \ud300\uc7a5", "label": "\uc9c1\uc18d \ubcf4\uace0 \ub300\uc0c1", "to": "\ubc15\uc601\ud76c \ubcf8\ubd80\uc7a5"}, {"arrows": "to", "color": "#565f89", "from": "\ud64d\ud300\uc7a5", "label": "\uc9c1\uc18d \ubcf4\uace0 \ub300\uc0c1", "to": "\uc1a1\ubcf8\ubd80\uc7a5 \uc0c1\ubb34"}, {"arrows": "to", "color": "#565f89", "from": "P-01: \ud074\ub77c\uc6b0\ub4dc \ub124\uc774\ud2f0\ube0c \ub9c8\uc774\uadf8\ub808\uc774\uc158", "label": "\ucd1d\uad04 PM", "to": "\uae40\ucca0\uc218 \ud300\uc7a5"}, {"arrows": "to", "color": "#565f89", "from": "P-01: \ud074\ub77c\uc6b0\ub4dc \ub124\uc774\ud2f0\ube0c \ub9c8\uc774\uadf8\ub808\uc774\uc158", "label": "\ud575\uc2ec \uac1c\ubc1c \uc778\ub825", "to": "\uc774\uc120\uc784 \uc120\uc784"}, {"arrows": "to", "color": "#565f89", "from": "P-01: \ud074\ub77c\uc6b0\ub4dc \ub124\uc774\ud2f0\ube0c \ub9c8\uc774\uadf8\ub808\uc774\uc158", "label": "\ud575\uc2ec \uac1c\ubc1c \uc778\ub825", "to": "\uac15\uc5d4\uc9c0\ub2c8\uc5b4 \uc120\uc784"}, {"arrows": "to", "color": "#565f89", "from": "P-01: \ud074\ub77c\uc6b0\ub4dc \ub124\uc774\ud2f0\ube0c \ub9c8\uc774\uadf8\ub808\uc774\uc158", "label": "\ud504\ub85c\uc81d\ud2b8 \ubaa9\ud45c", "to": "\uae30\uc874 \ub808\uac70\uc2dc \uc628\ud504\ub808\ubbf8\uc2a4 \uc778\ud504\ub77c\ub97c \ud558\uc774\ube0c\ub9ac\ub4dc \uba40\ud2f0\ud074\ub77c\uc6b0\ub4dc \ud658\uacbd\uc73c\ub85c \uc644\uc804 \uc804\ud658"}, {"arrows": "to", "color": "#565f89", "from": "P-01: \ud074\ub77c\uc6b0\ub4dc \ub124\uc774\ud2f0\ube0c \ub9c8\uc774\uadf8\ub808\uc774\uc158", "label": "\uc608\uc0b0 \uaddc\ubaa8", "to": "3\uc5b5 5,000\ub9cc\uc6d0"}, {"arrows": "to", "color": "#565f89", "from": "P-01: \ud074\ub77c\uc6b0\ub4dc \ub124\uc774\ud2f0\ube0c \ub9c8\uc774\uadf8\ub808\uc774\uc158", "label": "\uc608\uc0b0 \uc2b9\uc778\uad8c\uc790", "to": "\ubc15\uc601\ud76c \ubcf8\ubd80\uc7a5"}, {"arrows": "to", "color": "#565f89", "from": "P-01: \ud074\ub77c\uc6b0\ub4dc \ub124\uc774\ud2f0\ube0c \ub9c8\uc774\uadf8\ub808\uc774\uc158", "label": "\ud575\uc2ec \ub9ac\uc2a4\ud06c", "to": "\uc804\ud658 \uacfc\uc815 \uc911 \ub2e4\uc6b4\ud0c0\uc784 \ucd5c\uc18c\ud654 \ubc0f \uae08\uc735 \ubcf4\uc548 \uaddc\uc815 \uc900\uc218"}, {"arrows": "to", "color": "#565f89", "from": "P-02: \uc5d4\ud130\ud504\ub77c\uc774\uc988 Agentic RAG \ud50c\ub7ab\ud3fc \uad6c\ucd95", "label": "\ucd1d\uad04 PM", "to": "\ud64d\ud300\uc7a5"}, {"arrows": "to", "color": "#565f89", "from": "P-02: \uc5d4\ud130\ud504\ub77c\uc774\uc988 Agentic RAG \ud50c\ub7ab\ud3fc \uad6c\ucd95", "label": "\ud575\uc2ec \uac1c\ubc1c \uc778\ub825", "to": "\uc724\uc5d0\uc774\uc804\ud2b8 \ucc45\uc784"}, {"arrows": "to", "color": "#565f89", "from": "P-02: \uc5d4\ud130\ud504\ub77c\uc774\uc988 Agentic RAG \ud50c\ub7ab\ud3fc \uad6c\ucd95", "label": "\ud575\uc2ec \uac1c\ubc1c \uc778\ub825", "to": "\uc7a5LLM \uc120\uc784"}, {"arrows": "to", "color": "#565f89", "from": "P-02: \uc5d4\ud130\ud504\ub77c\uc774\uc988 Agentic RAG \ud50c\ub7ab\ud3fc \uad6c\ucd95", "label": "\ud30c\uacac \uac1c\ubc1c \uc778\ub825", "to": "\ucd5c\ucc45\uc784 \ucc45\uc784"}, {"arrows": "to", "color": "#565f89", "from": "P-02: \uc5d4\ud130\ud504\ub77c\uc774\uc988 Agentic RAG \ud50c\ub7ab\ud3fc \uad6c\ucd95", "label": "\ud504\ub85c\uc81d\ud2b8 \ubaa9\ud45c", "to": "\uc0ac\ub0b4 \uc815\ud615/\ube44\uc815\ud615/\uadf8\ub798\ud504 \ub370\uc774\ud130\ub97c \ud1b5\ud569 \uc5f0\ub3d9\ud558\ub294 \uc9c0\ub2a5\ud615 \uc5d0\uc774\uc804\ud2f1 RAG \uc544\ud0a4\ud14d\ucc98 \uad6c\ucd95"}, {"arrows": "to", "color": "#565f89", "from": "P-02: \uc5d4\ud130\ud504\ub77c\uc774\uc988 Agentic RAG \ud50c\ub7ab\ud3fc \uad6c\ucd95", "label": "\uc608\uc0b0 \uaddc\ubaa8", "to": "4\uc5b5 8,000\ub9cc\uc6d0"}, {"arrows": "to", "color": "#565f89", "from": "P-02: \uc5d4\ud130\ud504\ub77c\uc774\uc988 Agentic RAG \ud50c\ub7ab\ud3fc \uad6c\ucd95", "label": "\uc608\uc0b0 \uc2b9\uc778\uad8c\uc790", "to": "\uc1a1\ubcf8\ubd80\uc7a5 \uc0c1\ubb34"}, {"arrows": "to", "color": "#565f89", "from": "P-02: \uc5d4\ud130\ud504\ub77c\uc774\uc988 Agentic RAG \ud50c\ub7ab\ud3fc \uad6c\ucd95", "label": "\ud575\uc2ec \ub9ac\uc2a4\ud06c", "to": "\ubcf5\ud569 \uc9c8\uc758 \ucc98\ub9ac \uc9c0\uc5f0\uc2dc\uac04 \ubc0f \uc774\uc885 \ub370\uc774\ud130 \uc18c\uc2a4 \uac04 \ud658\uac01 \ubc29\uc9c0"}, {"arrows": "to", "color": "#565f89", "from": "P-02: \uc5d4\ud130\ud504\ub77c\uc774\uc988 Agentic RAG \ud50c\ub7ab\ud3fc \uad6c\ucd95", "label": "\uc758\uc874 \ud504\ub85c\uc81d\ud2b8", "to": "P-01: \ud074\ub77c\uc6b0\ub4dc \ub124\uc774\ud2f0\ube0c \ub9c8\uc774\uadf8\ub808\uc774\uc158"}, {"arrows": "to", "color": "#565f89", "from": "P-03: \ucc28\uc138\ub300 AI \ub370\uc774\ud130 \uac70\ubc84\ub10c\uc2a4", "label": "\ucd1d\uad04 PM", "to": "\uc720\uc218\uc11d"}, {"arrows": "to", "color": "#565f89", "from": "P-03: \ucc28\uc138\ub300 AI \ub370\uc774\ud130 \uac70\ubc84\ub10c\uc2a4", "label": "\ud575\uc2ec \uac1c\ubc1c \uc778\ub825", "to": "\uc784\ub370\uc774\ud130 \ucc45\uc784"}, {"arrows": "to", "color": "#565f89", "from": "P-03: \ucc28\uc138\ub300 AI \ub370\uc774\ud130 \uac70\ubc84\ub10c\uc2a4", "label": "\ud575\uc2ec \uac1c\ubc1c \uc778\ub825", "to": "\uc870\uc5d4\uc9c0\ub2c8\uc5b4 \ucc45\uc784"}, {"arrows": "to", "color": "#565f89", "from": "P-03: \ucc28\uc138\ub300 AI \ub370\uc774\ud130 \uac70\ubc84\ub10c\uc2a4", "label": "\ud504\ub85c\uc81d\ud2b8 \ubaa9\ud45c", "to": "\uc0ac\ub0b4 \ubbfc\uac10 \ub370\uc774\ud130 \uc2dd\ubcc4 \ubc0f \uc2e4\uc2dc\uac04 \uc811\uadfc \ud1b5\uc81c \uccb4\uacc4 \uad6c\ucd95"}, {"arrows": "to", "color": "#565f89", "from": "P-03: \ucc28\uc138\ub300 AI \ub370\uc774\ud130 \uac70\ubc84\ub10c\uc2a4", "label": "\uc608\uc0b0 \uaddc\ubaa8", "to": "2\uc5b5 2,000\ub9cc\uc6d0"}, {"arrows": "to", "color": "#565f89", "from": "P-03: \ucc28\uc138\ub300 AI \ub370\uc774\ud130 \uac70\ubc84\ub10c\uc2a4", "label": "\uc608\uc0b0 \uc2b9\uc778\uad8c\uc790", "to": "\uc1a1\ubcf8\ubd80\uc7a5 \uc0c1\ubb34"}, {"arrows": "to", "color": "#565f89", "from": "P-03: \ucc28\uc138\ub300 AI \ub370\uc774\ud130 \uac70\ubc84\ub10c\uc2a4", "label": "\ud611\uc5c5 \ubd80\uc11c", "to": "\uc778\uc0ac\uae30\ud68d\ud300"}, {"arrows": "to", "color": "#565f89", "from": "P-03: \ucc28\uc138\ub300 AI \ub370\uc774\ud130 \uac70\ubc84\ub10c\uc2a4", "label": "\ud611\uc5c5 \ubd80\uc11c", "to": "\uc7ac\ubb34\uad00\ub9ac\ud300"}, {"arrows": "to", "color": "#565f89", "from": "P-03: \ucc28\uc138\ub300 AI \ub370\uc774\ud130 \uac70\ubc84\ub10c\uc2a4", "label": "\ud575\uc2ec \ub9ac\uc2a4\ud06c", "to": "\ubc95\uc801 \ucef4\ud50c\ub77c\uc774\uc5b8\uc2a4 \ubcc0\uacbd \ubc0f \uac1c\uc778\uc815\ubcf4\ubcf4\ud638\ubc95 \uac15\ud654 \ub300\uc751"}, {"arrows": "to", "color": "#565f89", "from": "\uc804\ub7b5 \ud504\ub85c\uc81d\ud2b8 \uc608\uc0b0 \uc9d1\ud589 \ubc0f \uc815\uc0b0", "label": "\ud68c\uacc4 \uac10\uc0ac \ub2f4\ub2f9", "to": "\uc7ac\ubb34\uad00\ub9ac\ud300 \uad8c\ud300\uc7a5"}]);
+
+                  nodeColors = {};
+                  allNodes = nodes.get({ returnType: "Object" });
+                  for (nodeId in allNodes) {
+                    nodeColors[nodeId] = allNodes[nodeId].color;
+                  }
+                  allEdges = edges.get({ returnType: "Object" });
+                  // adding nodes and edges to the graph
+                  data = {nodes: nodes, edges: edges};
+
+                  var options = {
+    "configure": {
+        "enabled": false
+    },
+    "edges": {
+        "color": {
+            "inherit": true
+        },
+        "smooth": {
+            "enabled": true,
+            "type": "dynamic"
+        }
+    },
+    "interaction": {
+        "dragNodes": true,
+        "hideEdgesOnDrag": false,
+        "hideNodesOnDrag": false
+    },
+    "physics": {
+        "enabled": true,
+        "stabilization": {
+            "enabled": true,
+            "fit": true,
+            "iterations": 1000,
+            "onlyDynamicEdges": false,
+            "updateInterval": 50
+        }
+    }
+};
+
+                  
+
+
+                  
+
+                  network = new vis.Network(container, data, options);
+
+                  
+
+                  
+
+                  
+
+
+                  
+
+                  return network;
+
+              }
+              drawGraph();
+        </script>
+    </body>
+</html>

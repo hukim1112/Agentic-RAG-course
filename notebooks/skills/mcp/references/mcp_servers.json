@@ -1,0 +1,12 @@
+{
+  "fastmcp-basic-demo": {
+    "url": "http://localhost:6001/mcp",
+    "transport": "http",
+    "description": "기본 유틸리티 및 테스트 도구 서버 (인사, 할일 추출 등)"
+  },
+  "finance-tools-server": {
+    "url": "http://localhost:6002/mcp",
+    "transport": "http",
+    "description": "금융 데이터 및 주가 분석 도구 서버 (Yahoo Finance 주가 조회 stock_data, 금융 뉴스 크롤러 web_scraper 등)"
+  }
+}

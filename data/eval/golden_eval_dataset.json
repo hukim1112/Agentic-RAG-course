@@ -1,0 +1,92 @@
+[
+  {
+    "id": "eval_01",
+    "domain": "policy",
+    "question": "해외 출장 시 1일 숙박비 지급 한도와 직급별 항공권(비즈니스/이코노미) 이용 기준은 무엇인가요?",
+    "target_tools": ["query_company_policy"],
+    "ground_truth": "해외 출장 시 숙박비는 지역 등급별(A/B/C)로 실비 상한액(A등급 $250, B등급 $200, C등급 $150)이 적용되며, 임원 및 수석 이상은 비즈니스석, 책임/선임/전임은 이코노미석 탑승이 원칙입니다.",
+    "key_facts": ["숙박비 지역별 상한", "임원/수석 비즈니스석", "책임/선임/전임 이코노미석"],
+    "requires_self_correction": false
+  },
+  {
+    "id": "eval_02",
+    "domain": "industry_report",
+    "question": "2024년 4분기 한국은행 보고서 기준 글로벌 HBM 메모리 반도체 수요 전망 및 주요 공급망 리스크 요인은 무엇인가요?",
+    "target_tools": ["query_bok_reports"],
+    "ground_truth": "2024년 4분기 한국은행 보고서에 따르면 AI 서버 투자 확대로 HBM 수요는 전년 대비 150% 이상 급증할 것으로 전망되나, 첨단 패키징(CoWoS) 병목 현상과 차세대 공정 수율 저하가 주요 리스크 요인으로 지적되었습니다.",
+    "key_facts": ["AI 서버 투자 확대", "HBM 수요 150% 이상 급증", "첨단 패키징 병목", "수율 저하 리스크"],
+    "requires_self_correction": false
+  },
+  {
+    "id": "eval_03",
+    "domain": "organization_graph",
+    "question": "클라우드운영팀 김철수 팀장의 직속 상사(결재권자)와 현재 투입되어 있는 주요 전략 프로젝트는 무엇인가요?",
+    "target_tools": ["query_org_graph"],
+    "ground_truth": "클라우드운영팀 김철수 팀장의 직속 상사는 클라우드사업본부 최동식 본부장(상무)이며, 현재 '엔터프라이즈 하이브리드 클라우드 전환 프로젝트(Cloud-Next)'의 총괄 PM으로 투입되어 있습니다.",
+    "key_facts": ["최동식 본부장", "Cloud-Next 프로젝트 PM"],
+    "requires_self_correction": false
+  },
+  {
+    "id": "eval_04",
+    "domain": "policy",
+    "question": "생성형 AI(ChatGPT 등)를 사내 업무에 활용할 때 사내 기밀 및 고객 데이터 입력 금지 규정과 위반 시 징계 기준은 어떻게 되나요?",
+    "target_tools": ["query_company_policy"],
+    "ground_truth": "사내 정보보안 규정에 따라 개인정보, 고객 데이터, 미공개 소스코드 및 재무정보의 외부 AI 입력은 엄격히 금지되며, 위반 시 보안위원회 회부를 통해 경고, 감봉, 정직 또는 중징계 처분을 받을 수 있습니다.",
+    "key_facts": ["개인정보/고객데이터/소스코드 입력 금지", "보안위원회 회부", "징계 처분"],
+    "requires_self_correction": false
+  },
+  {
+    "id": "eval_05",
+    "domain": "industry_report",
+    "question": "2024년 3분기 기준 국내 완성차 및 이차전지 업계의 미국 IRA(인플레이션 감축법) 대응 전략과 수출 실적 추이는?",
+    "target_tools": ["query_bok_reports"],
+    "ground_truth": "2024년 3분기 국내 완성차는 현지 조립 공장 가동 전까지 리스/렌터카 등 상업용 친환경차 비중을 확대했고, 이차전지 업체는 북미 합작공장 조기 착공 및 핵심 광물 공급망 다변화로 대응하여 수출액 방어에 성공했습니다.",
+    "key_facts": ["상업용 친환경차 리스 비중 확대", "북미 합작공장 조기 착공", "핵심 광물 공급망 다변화"],
+    "requires_self_correction": false
+  },
+  {
+    "id": "eval_06",
+    "domain": "multi_source",
+    "question": "AI솔루션팀 박영희 수석이 국내 학회 참석 시 지원받을 수 있는 일비 한도와 해당 출장 품의의 최종 승인권자는 누구인가요?",
+    "target_tools": ["query_company_policy", "query_org_graph"],
+    "ground_truth": "국내 출장 규정상 1일 일비는 30,000원(식비 별도 25,000원)이며, 박영희 수석의 조직도상 출장 품의 최종 승인권자는 AI솔루션본부 이민호 본부장입니다.",
+    "key_facts": ["국내 일비 30,000원", "이민호 본부장 승인"],
+    "requires_self_correction": false
+  },
+  {
+    "id": "eval_07",
+    "domain": "policy",
+    "question": "그 뭐냐 주말에 법카 긁었을 때 소명하는 거 어떻게 해야 됨?",
+    "target_tools": ["query_company_policy"],
+    "ground_truth": "주말 및 공휴일 법인카드 사용은 원칙적으로 금지되며, 부득이한 업무 목적 사용 시 사용일로부터 3영업일 이내에 ERP 시스템에 '주말 법인카드 사용 사유서'와 증빙(참석자 명단, 회의록 등)을 첨부하여 부서장 승인을 받아야 합니다.",
+    "key_facts": ["3영업일 이내 사유서 제출", "참석자 명단 및 증빙 첨부", "부서장 결재"],
+    "requires_self_correction": true
+  },
+  {
+    "id": "eval_08",
+    "domain": "organization_graph",
+    "question": "스마트팩토리 구축 프로젝트(SF-2025)에 투입된 인력들의 소속 부서와 책임자 직급은 무엇인가요?",
+    "target_tools": ["query_org_graph"],
+    "ground_truth": "SF-2025 프로젝트에는 제조DX팀, 클라우드운영팀, 보안엔지니어링팀 인력이 투입되어 있으며, 프로젝트 총괄 책임자는 제조DX팀 정우성 수석(부장급)입니다.",
+    "key_facts": ["제조DX팀, 클라우드운영팀, 보안팀 투입", "정우성 수석 총괄"],
+    "requires_self_correction": false
+  },
+  {
+    "id": "eval_09",
+    "domain": "negative_hallucination_trap",
+    "question": "2026년도 신규 도입된 '우주 항공 개발 특별 연구 상여금'의 지급 대상과 1인당 최대 지급 금액은 얼마인가요?",
+    "target_tools": ["query_company_policy"],
+    "ground_truth": "사내 인사 및 보수 규정을 검색한 결과, '우주 항공 개발 특별 연구 상여금'이라는 제도는 존재하지 않습니다. 규정에 명시되지 않은 허위 정보입니다.",
+    "key_facts": ["해당 제도 미존재", "허위/근거 없음 명시"],
+    "requires_self_correction": true
+  },
+  {
+    "id": "eval_10",
+    "domain": "industry_report",
+    "question": "2024년 상반기 대비 하반기 반도체 수출 실적 변화 추이와 파운드리 가동률 회복 시점 전망은?",
+    "target_tools": ["query_bok_reports"],
+    "ground_truth": "2024년 상반기 메모리 중심 반등에 이어 하반기에는 수출 증가율이 전년 동기 대비 28%로 확대되었으며, 레거시 및 첨단 파운드리 가동률은 2025년 상반기에 80% 이상으로 점진적 회복세를 보일 것으로 전망되었습니다.",
+    "key_facts": ["하반기 수출 28% 확대", "2025년 상반기 80% 이상 회복 전망"],
+    "requires_self_correction": false
+  }
+]
