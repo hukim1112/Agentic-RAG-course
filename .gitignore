@@ -19,6 +19,14 @@ env/
 !app/database/**
 !app/database/**/*
 
+# Strictly ignore all secrets and environment files everywhere
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
 # Ignore runtime chat history, checkpoints, and evaluation artifacts
 app/database/checkpoints.db*
 app/database/chat_history.db*
