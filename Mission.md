@@ -337,10 +337,13 @@ def create_agent_executor():
 # 1. Enterprise RAG MCP 서버 실행 (포트 8010)
 python app/mcp/enterprise_rag_server.py
 
-# 2. FastAPI 백엔드 서버 실행 (포트 8000)
+# 2. (시나리오 3 테스트용) Finance MCP 서버 실행 (포트 8020)
+python notebooks/example_mcp/finance_mcp_server.py --port 8020
+
+# 3. FastAPI 백엔드 서버 실행 (포트 8000)
 python app/server.py
 
-# 3. Streamlit UI 실행 (포트 8501)
+# 4. Streamlit UI 실행 (포트 8501)
 streamlit run app/ui.py
 ```
 
