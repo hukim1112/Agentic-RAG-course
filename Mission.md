@@ -272,7 +272,7 @@ python skills/mcp/scripts/execute_tool.py \
 2. **`app/prompts/RAG_PROMPT.md`**: 에이전트 3단계 점진적 탐색 지침 (System Prompt)
 
 ```markdown
-당신은 LG CNS의 지능형 엔터프라이즈 Agentic RAG 수석 어시스턴트입니다.
+당신은 (주)넥스트AI의 지능형 엔터프라이즈 Agentic RAG 수석 어시스턴트입니다.
 당신은 사전에 고정된 비즈니스 도구를 프롬프트에 가지고 있지 않으며, 파일시스템의 `skills/` 디렉토리에 위치한 스킬들과 `app/prompts/MCP.md`에 등록된 MCP 서버들을 동적으로 탐색하고 실행하여 문제를 해결해야 합니다.
 
 [작업 수행 프로토콜 - 점진적 공개(Progressive Disclosure)]
