@@ -9,31 +9,33 @@ completion_models:
     model_provider: gemini
     model: gemini-3.7-flash
     api_key: ${GOOGLE_API_KEY}
+
 embedding_models:
   default_embedding_model:
     type: litellm
-    model_provider: vertex_ai
-    model: text-embedding-004
-    api_key: dummy
-    call_args:
-      vertex_project: project-5f90a776-f598-4b87-b9c
-      vertex_location: global
+    model_provider: gemini
+    model: gemini-embedding-001
+    api_key: ${GOOGLE_API_KEY}
+
 global_search:
   completion_model_id: default_completion_model
+
 local_search:
   completion_model_id: default_chat_model
   embedding_model_id: default_embedding_model
+
 vector_store:
   default_vector_store:
     type: lancedb
     db_uri: output/lancedb
     container_name: default
+
 input:
-  type: file
   file_type: text
   base_dir: input
   file_pattern: .*\.txt
   file_encoding: utf-8
+
 chunking:
   size: 500
   overlap: 50
