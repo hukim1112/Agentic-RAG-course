@@ -33,7 +33,26 @@
 
 ---
 
+## 🧭 진행 순서 (노트북과 번갈아 진행)
+
+노트북 `3_MCP_and_Skills.ipynb`의 Part 3~5는 **이 미션에서 여러분이 직접 완성한 MCP 서버와 레지스트리**를 사용합니다.  
+따라서 미션을 **Part A / Part B**로 나누어, 노트북 중간에 Part A를 먼저 수행합니다.
+
+| 순서 | 할 일 | 위치 |
+| :--- | :--- | :--- |
+| ① | Part 1~2: MCP 개념, In-Process 데모 서버, Pydantic 검증 | 노트북 |
+| ② | **Mission 03-A**: 토큰 확인 → 서버 TODO 1·2·4·5 완성 → 서버 기동 → CLI 보안 검증 → 레지스트리 등록 | 이 문서 **1~5단계** |
+| ③ | Part 3~5: 인증/인가, 정적 바인딩, Skills 에이전트 (**내가 만든 서버로 실행**) | 노트북 |
+| ④ | **Mission 03-B**: Chainlit에서 `skill_rag_agent` vs `tool_rag_agent` 비교 | 이 문서 **6단계** |
+
+> 💡 노트북 Part 3의 서버 기동 셀은 포트 8010에 서버가 이미 떠 있으면 그 서버를 그대로 사용하고, 없으면 `enterprise_rag_server.py`를 백그라운드로 직접 띄웁니다.  
+> TODO가 남아 있으면 서버가 뜨지 않으므로 셀이 오류와 함께 멈춥니다. 노트북 Part 3~5가 끝까지 실행되면 Mission 03-A 구현이 맞다는 뜻입니다.
+
+---
+
 ## 🛠️ 단계별 수행 가이드
+
+## 🅰️ Mission 03-A: MCP 서버 구현 및 등록 (노트북 Part 3 전에 수행)
 
 ### 1단계: 인증 토큰 (.env) 확인 및 생성
 
@@ -264,7 +283,7 @@ python skills/mcp/scripts/execute_tool.py --url http://localhost:8010/mcp --toke
 
 ---
 
-### 5단계: 레지스트리 등록 및 Skills vs Tool RAG 비교 (미션 3-4)
+### 5단계: MCP 서버 레지스트리 등록 (미션 3-4 전반)
 
 `skills/mcp/references/mcp_servers.json` 파일을 열면 위키백과(Stdio) 서버만 등록되어 있습니다.  
 `"wikipedia": {...}` 블록 닫는 중괄호 뒤에 **쉼표(`,`)를 붙이고 `"enterprise_rag"` 블록을 추가**하여, 최종적으로 아래와 같은 모양이 되도록 만드세요:
@@ -296,11 +315,21 @@ python skills/mcp/scripts/execute_tool.py --url http://localhost:8010/mcp --toke
 
 ---
 
+> [!IMPORTANT]
+> ### ✅ Mission 03-A 완료 → 노트북 Part 3으로 돌아가세요
+> 1. 노트북 `3_MCP_and_Skills.ipynb`의 **Part 3**부터 이어서 실행합니다. (4단계에서 띄운 서버는 그대로 켜 두어도 됩니다. 노트북이 실행 중인 서버를 감지해 그대로 사용합니다.)
+> 2. Part 3의 인증 시나리오 셀에서 `토큰 없음 ❌ / 틀린 토큰 ❌ / 올바른 토큰 ✅ 도구 4개`가 나오고, Part 5의 레지스트리 출력에 `enterprise_rag`가 보이면 Part A 구현이 맞습니다.
+> 3. 노트북 Part 5까지 마친 뒤, 아래 **Mission 03-B (6단계)**로 돌아오세요.
+
+---
+
+## 🅱️ Mission 03-B: Skills vs Tool RAG 에이전트 비교 (노트북 Part 5 이후 수행)
+
 ### 6단계: 웹 UI에서 `skill_rag_agent` 자율 실행 궤적 관찰
 
 FastAPI 서버(`server.py`)와 Chainlit UI(`chainlit_ui.py`)가 띄워진 상태에서, Chainlit UI 프로필을 **`skill_rag_agent`**로 변경하고 테스트를 진행합니다.
 
-> ⚠️ **사전 조건**: 4단계의 FastMCP 서버(터미널 3, 포트 8010)가 계속 실행 중이어야 합니다. 서버가 꺼져 있으면 `execute_tool.py`가 연결 오류를 반환합니다.
+> ⚠️ **사전 조건**: FastMCP 서버(포트 8010)가 실행 중이어야 합니다. 노트북 마지막 셀에서 노트북이 띄운 서버를 종료했다면, 터미널 3에서 `python app/mcp/enterprise_rag_server.py --port 8010`으로 다시 띄우세요. 서버가 꺼져 있으면 `execute_tool.py`가 연결 오류를 반환합니다.
 
 #### 🧪 `skill_rag_agent`의 5단계 자율 탐색 궤적 (Trajectory):
 1. **레지스트리 확인**: 프롬프트에 도구가 없음을 인지하고, `file_read("skills/mcp/references/mcp_servers.json")`로 사내 서버 URL과 인증 정보(`token_env: ENTERPRISE_RAG_MCP_TOKEN`) 파악
@@ -342,16 +371,23 @@ FastAPI 서버(`server.py`)와 Chainlit UI(`chainlit_ui.py`)가 띄워진 상태
 | `Address already in use (:8010)` | 이전 FastMCP 서버가 아직 실행 중 | `lsof -ti:8010 \| xargs -r kill -9` 또는 `pkill -f enterprise_rag_server` |
 | `StaticTokenVerifier: 401 Unauthorized` | `.env`의 토큰과 클라이언트 환경 변수 불일치 | `grep ENTERPRISE_RAG_MCP_TOKEN .env` 값을 확인하고, 서버와 클라이언트가 동일한 `.env`를 바라보는지 점검 |
 | `json.decoder.JSONDecodeError` (`--args`) | CLI 인자의 따옴표 이스케이프 오류 | 파라미터는 반드시 작은따옴표로 감싸고 내부 키/문자열을 큰따옴표로 전달: `'{"query": "..."}'` |
+| 노트북 Part 3 서버 기동 셀이 `❌ MCP 서버를 기동하지 못했습니다` 오류로 멈춤 | Mission 03-A의 TODO 미완성 또는 서버 코드 오류 | 셀이 출력한 로그 마지막 줄(전체는 `artifacts/mcp_server.log`)을 확인하고, 터미널에서 `python app/mcp/enterprise_rag_server.py --port 8010`이 정상 기동되는지 먼저 점검 |
 
 ---
 
 ## 🏆 미션 완료 체크리스트
 
+**Mission 03-A (노트북 Part 3 전)**
 - [ ] `.env`에 `ENTERPRISE_RAG_MCP_TOKEN`이 정상 설정되어 있음을 확인했다.
 - [ ] `StaticTokenVerifier` 기반의 인증 FastMCP 서버를 완성했다.
 - [ ] 사내 규정, BOK 보고서, 지식 그래프, GraphRAG 도구 4종을 `@mcp.tool`로 완성했다.
 - [ ] 토큰이 없을 때 401 차단, 토큰이 있을 때 도구 목록 조회 및 원격 도구 실행이 됨을 CLI로 검증했다.
 - [ ] `skills/mcp/references/mcp_servers.json`에 `enterprise_rag`를 보안 규격(`token_env`)에 맞추어 등록했다.
+
+**노트북 Part 3~5**
+- [ ] 내가 만든 서버로 노트북 Part 3~5(인증 시나리오, 정적 바인딩, Skills 에이전트)를 끝까지 실행했다.
+
+**Mission 03-B (노트북 Part 5 이후)**
 - [ ] Chainlit UI에서 `skill_rag_agent`가 점진적 공개(Progressive Disclosure) 방식으로 MCP 서버를 스스로 찾아 답하는 궤적을 확인했다.
 - [ ] Tool RAG와 Skills RAG의 토큰 소모 및 확장성 차이를 완벽히 이해했다.
 
