@@ -16,3 +16,4 @@ sudo locale-gen ko_KR.UTF-8
 sudo update-locale LANG=ko_KR.UTF-8
 
 echo "✅ 한글 폰트 설치가 완료되었습니다!"
+echo "💡 적용을 위해 실행 중인 start_vnc.sh를 종료하고 다시 실행해 주세요."

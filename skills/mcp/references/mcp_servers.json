@@ -1,0 +1,18 @@
+{
+  "wikipedia": {
+    "name": "Wikipedia-MCP-Server",
+    "transport": "stdio",
+    "url": "npx -y wikipedia-mcp",
+    "description": "위키백과 백과사전 검색 및 문서 읽기 도구 (search, readArticle. 영문 query만 허용)"
+  },
+  "enterprise_rag": {
+    "name": "Enterprise-RAG-Server",
+    "transport": "streamable-http",
+    "url": "http://localhost:8010/mcp",
+    "auth": {
+      "type": "bearer",
+      "token_env": "ENTERPRISE_RAG_MCP_TOKEN"
+    },
+    "description": "사내 규정 검색, 한국은행 산업보고서 검색, 조직도 관계 그래프 탐색, GraphRAG 분석 도구"
+  }
+}

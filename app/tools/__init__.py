@@ -15,5 +15,5 @@ __all__ = [
     "tools_chatbot",
     "file_read", "file_edit", "file_writer", "notebook_edit",
     "bash_command", "grep_search", "glob_search", "tool_search",
-    "web_fetch", "web_search"
+    "web_fetch", "web_search",
 ]

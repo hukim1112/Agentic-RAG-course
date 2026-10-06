@@ -1,56 +1,80 @@
-# Byte-compiled / optimized / DLL files
+# ===============================================================================
+# agent-harness-lab .gitignore
+# ===============================================================================
+
+# ── Byte-compiled / optimized / DLL files ──
 __pycache__/
 *.py[cod]
 *$py.class
 
-# Environments
+# ── Environments & Secrets ──
 .env
 .venv
 venv/
 ENV/
 env/
 
-# Databases & Caching
+# ── Databases & Caching ──
 *.db
 *.db-journal
+*.db-wal
+*.db-shm
 *.sqlite3
 
-# Allow pre-built databases for distribution
+# Allow pre-built RAG databases for distribution (Chroma, GraphRAG, etc.)
 !app/database/**
 !app/database/**/*
-
-# Strictly ignore all secrets and environment files everywhere
-.env
-.env.*
-!.env.example
-**/.env
-**/.env.*
-!**/.env.example
-
-# Ignore runtime chat history, checkpoints, and evaluation artifacts
 app/database/checkpoints.db*
+app/database/chainlit_history.db*
 app/database/chat_history.db*
-artifacts/*
-!artifacts/*.png
 
-
-# Task tracking & State
-task.md
-task_state.json
-TASK.md
+# ── Logs ──
 *.log
 
-# Jupyter Notebook checkpoints
-.ipynb_checkpoints
+# ── Task tracking & State ──
+task.md
+task_state.json
+plan_state.json
+TASK.md
+
+# ── Jupyter Notebook ──
+.ipynb_checkpoints/
 */.ipynb_checkpoints/*
 
-# IDEs
+# ── IDEs ──
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
 
-# Test generation residues
+# ── Test / Experiment residues ──
 samples/
-
-# Local experiment directories
 scratch/
 sandbox/
+output/
+
+# ── Chainlit runtime files ──
+.files/
+
+# ── Agent artifacts (에이전트가 생성하는 런타임 산출물) ──
+artifacts/eval_runs/
+artifacts/eval_logs/
+artifacts/normalized/
+artifacts/knowledge_graph.html
+artifacts/*.log
+artifacts/runs/
+artifacts/data/
+artifacts/screenshots/
+artifacts/temporary/
+artifacts/reports/
+artifacts/charts/
+artifacts/analyst_test/
+
+# ── Browser automation temp files ──
+bu_cdp_*/
+
+# ── OS generated files ──
+.DS_Store
+Thumbs.db
+desktop.ini
