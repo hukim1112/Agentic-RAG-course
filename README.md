@@ -6,25 +6,17 @@
 
 ---
 
-## 📢 v2.0 업데이트 안내 (2026.10)
+## 🌿 브랜치 안내
 
-| 구분 | v1.0 (Legacy) | v2.0 (Current) |
+| 구분 | `main` (교육생용) | `instructor` (강사용) |
 | :--- | :--- | :--- |
-| **웹 UI** | Streamlit (`app/ui.py`, 8501) | **Chainlit (`app/chainlit_ui.py`, 8080)** |
-| **RAG 에이전트** | 단일 `rag_agent` | **`tool_rag_agent`(직접 바인딩) vs `skill_rag_agent`(Skills + MCP) 비교 구조** |
-| **MCP 서버** | 인증 없는 FastMCP | **Bearer 토큰 + `rag:read` 스코프 인증** |
-| **RAG 모듈** | `rag/*.py` 평면 구조 | **`rag/preprocessing · indexing · retrieval · graph` 패키지** |
-| **DB 빌드** | `generate_database.py` | **`build_database.py` (`--targets`, `--extra-docs`로 무수정 확장)** |
-| **노트북 / 미션** | `01~04_*.ipynb`, 단일 `Mission.md` | **`1~4_*.ipynb`, `missions/01~03_missions.md`** |
-| **실행 환경** | Codespaces에서 매번 패키지 설치 | **사전 빌드 Docker 이미지 (`hukimartia/agentic-rag-lab`)** |
+| **용도** | 노트북 학습 후 미션을 직접 수행 | 모든 미션이 완성된 정답본 |
+| **Mission 01** `app/agents/tool_rag_agent/agent.py` | `create_agent_executor()`가 `TODO` | 완성 |
+| **Mission 03** `app/mcp/enterprise_rag_server.py` | 인증기 · 서버 · 스키마 · 도구 4종이 `TODO` | 완성 |
+| **Mission 03** `skills/mcp/references/mcp_servers.json` | `wikipedia`만 등록 | `wikipedia` + `enterprise_rag` 등록 |
+| **그 외** (노트북, 미션 문서, DB, 공용 모듈) | 동일 | 동일 |
 
-### 🌿 브랜치 안내
-
-| 브랜치 | 용도 |
-| :--- | :--- |
-| `main` | **교육생용** — 미션 대상 코드가 `TODO`로 비어 있습니다 |
-| `instructor` | **강사용** — 모든 미션이 완성된 정답본 |
-| `main-v1` / `instructor-v1` | v1.0 백업 (`git checkout main-v1`) |
+> 💡 미션 중 막히면 `instructor` 브랜치의 같은 파일과 비교해 보세요: `git diff main origin/instructor -- <파일 경로>`
 
 ---
 
@@ -81,15 +73,7 @@ LANGCHAIN_PROJECT=agentic-rag
 | 4 | `4_Evaluation.ipynb` | - | 평가 하네스로 진단 → 개선 → 회귀 확인, HITL 승인 게이트 |
 
 `notebooks/0_Template.ipynb`는 노트북 공통 환경 설정(루트 경로, `.env`, `nest_asyncio`) 템플릿입니다.
-
-### ✏️ 미션에서 직접 작성하는 파일 (`main` 브랜치)
-
-| 미션 | 파일 | 작성 내용 |
-| :---: | :--- | :--- |
-| 01 | `app/agents/tool_rag_agent/agent.py` | `create_agent_executor()` — LLM, `AsyncSqliteSaver` 체크포인터, 에이전트 조립 |
-| 02 | (코드 작성 없음) | `build_database.py --extra-docs`로 새 문서 인덱싱 및 롤백 |
-| 03 | `app/mcp/enterprise_rag_server.py` | 토큰 인증기, FastMCP 서버, Pydantic 스키마, `@mcp.tool` 4종 |
-| 03 | `skills/mcp/references/mcp_servers.json` | `enterprise_rag` 서버 등록 |
+미션에서 직접 작성하는 파일은 위 [브랜치 안내](#-브랜치-안내) 표를 참고하세요.
 
 ---
 
