@@ -11,9 +11,9 @@
 * **MCP 서버 구현 파일 (TODO 작성 대상)**: `app/mcp/enterprise_rag_server.py`  
   👉 **인증 프로바이더 및 4대 도구(@mcp.tool)를 직접 완성하세요!**
 * **MCP 서버 레지스트리 (TODO 작성 대상)**: `skills/mcp/references/mcp_servers.json`  
-  👉 **공개 위키백과(Stdio) 외에 사내 RAG 서버(HTTP)를 등록하세요!**
+  👉 **이미 등록된 공개 위키백과(Stdio) 서버 옆에 사내 RAG 서버(HTTP)를 추가 등록하세요!**
 * **MCP 스킬 패키지 (제공)**:
-  - 스킬 명세서: `skills/mcp/SKILL.md` (점진적 공개 Progressive Disclosure 지침)
+  - 스킬 명세서: `skills/mcp/Skill.md` (점진적 공개 Progressive Disclosure 지침)
   - MCP 범용 클라이언트 CLI: `skills/mcp/scripts/list_tools.py`, `skills/mcp/scripts/execute_tool.py`
 * **Skills RAG 에이전트 (제공)**: `app/agents/skill_rag_agent/`
 * **사전 학습 노트북**: `notebooks/3_MCP_and_Skills.ipynb`
@@ -53,14 +53,14 @@ grep -E '^ENTERPRISE_RAG_MCP_TOKEN=' .env | cut -d= -f1
 
 ### 2단계: FastMCP 인증기 및 서버 인스턴스 생성 (미션 3-1)
 
-`app/mcp/enterprise_rag_server.py` 파일을 열고, **TODO 1과 TODO 2**를 완성합니다:
+`app/mcp/enterprise_rag_server.py` 파일을 열고, **TODO 1과 TODO 2**를 완성합니다.
+
+> 📌 **시작 상태**: `FastMCP`, `require_scopes`, `StaticTokenVerifier` 등 필요한 import와 DB 로딩 코드(3번)는 이미 작성되어 있습니다.  
+> 파일의 `verifier = None  # TODO`와 `mcp = None  # TODO` 두 줄을 아래 코드로 **교체**하세요.  
+> (TODO 2를 완성하기 전에 서버를 실행하면 `❌ TODO 1, 2를 먼저 완성하세요.` 메시지와 함께 종료됩니다.)
 
 ```python
 # app/mcp/enterprise_rag_server.py (TODO 1 & 2)
-
-from fastmcp import FastMCP
-from fastmcp.server.auth import require_scopes
-from fastmcp.server.auth.providers.jwt import StaticTokenVerifier
 
 # 1. 인증기 설정: 허용된 Bearer 토큰과 토큰별 스코프(rag:read) 등록
 SERVER_TOKEN = os.getenv("ENTERPRISE_RAG_MCP_TOKEN")
@@ -86,6 +86,9 @@ mcp = FastMCP(
 ### 3단계: 4대 엔터프라이즈 MCP 도구 구현 (미션 3-2)
 
 `app/mcp/enterprise_rag_server.py`의 **TODO 4(Pydantic 스키마)와 TODO 5(도구 4종)**를 완성합니다.
+
+> 📌 **붙여넣을 위치**: 아래 코드 블록 전체를 TODO 4·TODO 5 주석 블록 아래, **`if __name__ == "__main__":` 줄보다 위**에 붙여넣으세요.  
+> `@mcp.tool` 데코레이터는 TODO 2에서 만든 `mcp` 인스턴스를 사용하므로, 반드시 TODO 1·2를 먼저 완성해야 합니다.
 
 모든 도구는 **`auth=require_scopes("rag:read")`** 데코레이터를 적용하여 권한이 있는 클라이언트만 실행할 수 있도록 보안을 강화합니다:
 
@@ -254,15 +257,17 @@ python skills/mcp/scripts/execute_tool.py --url http://localhost:8010/mcp --toke
 
 > 💡 **보너스: 기본 제공되는 공개 Stdio 위키백과 MCP 서버 테스트**:
 > ```bash
-> python skills/mcp/scripts/list_tools.py --transport stdio --command "npx -y wikipedia-mcp"
+> python skills/mcp/scripts/list_tools.py --url "npx -y wikipedia-mcp"
 > ```
-> 위 명령어로 `search`, `readArticle` 등 표준 Stdio MCP 도구 목록이 조회되는 것도 확인해 보세요!
+> 위 명령어로 `search`, `readArticle` 2개의 표준 Stdio MCP 도구 목록이 조회되는 것도 확인해 보세요!  
+> (`--url` 값이 `http`로 시작하지 않으면 CLI가 자동으로 Stdio 서브프로세스로 실행합니다. 첫 실행 시 `npx` 패키지 확인으로 수 초가 걸릴 수 있습니다.)
 
 ---
 
 ### 5단계: 레지스트리 등록 및 Skills vs Tool RAG 비교 (미션 3-4)
 
-`skills/mcp/references/mcp_servers.json` 파일을 열고, 기존의 위키백과(Stdio) 서버와 함께 방금 구축한 사내 엔터프라이즈 RAG 서버를 등록합니다:
+`skills/mcp/references/mcp_servers.json` 파일을 열면 위키백과(Stdio) 서버만 등록되어 있습니다.  
+`"wikipedia": {...}` 블록 닫는 중괄호 뒤에 **쉼표(`,`)를 붙이고 `"enterprise_rag"` 블록을 추가**하여, 최종적으로 아래와 같은 모양이 되도록 만드세요:
 
 ```json
 {
@@ -293,14 +298,28 @@ python skills/mcp/scripts/execute_tool.py --url http://localhost:8010/mcp --toke
 
 ### 6단계: 웹 UI에서 `skill_rag_agent` 자율 실행 궤적 관찰
 
-FastAPI 서버(`server.py`)와 Chainlit UI(`chainlit_ui.py`)가 띄워진 상태에서, Chainlit UI 프로필을 **`skill_rag_agent`**로 변경하고 테스트를 진행합니다:
+FastAPI 서버(`server.py`)와 Chainlit UI(`chainlit_ui.py`)가 띄워진 상태에서, Chainlit UI 프로필을 **`skill_rag_agent`**로 변경하고 테스트를 진행합니다.
+
+> ⚠️ **사전 조건**: 4단계의 FastMCP 서버(터미널 3, 포트 8010)가 계속 실행 중이어야 합니다. 서버가 꺼져 있으면 `execute_tool.py`가 연결 오류를 반환합니다.
 
 #### 🧪 `skill_rag_agent`의 5단계 자율 탐색 궤적 (Trajectory):
-1. **스킬 명세 열람**: 질문을 받은 에이전트는 프롬프트에 도구가 없음을 인지하고, `file_read("skills/mcp/SKILL.md")`를 실행
-2. **레지스트리 확인**: `file_read("skills/mcp/references/mcp_servers.json")`를 열어 사내 서버 URL과 인증 정보(`ENTERPRISE_RAG_MCP_TOKEN`) 파악
+1. **레지스트리 확인**: 프롬프트에 도구가 없음을 인지하고, `file_read("skills/mcp/references/mcp_servers.json")`로 사내 서버 URL과 인증 정보(`token_env: ENTERPRISE_RAG_MCP_TOKEN`) 파악
+2. **스킬 명세 열람**: `file_read("skills/mcp/Skill.md")`로 CLI 사용법 확인
 3. **도구 목록 조회**: `bash_command`로 `list_tools.py --url http://localhost:8010/mcp --token-env ...` 실행하여 도구 스키마 획득
-4. **원격 도구 실행**: 필요한 인자를 담아 `execute_tool.py`를 실행하여 사내 DB 결과 수집
+4. **원격 도구 실행**: 필요한 인자를 담아 `execute_tool.py`를 실행하여 사내 DB 결과 수집 (필요하면 여러 번 호출)
 5. **최종 응답 생성**: 수집된 사실을 종합하여 사용자에게 근거 조항과 함께 최종 답변 반환!
+
+> 💡 1·2번 순서는 모델 판단에 따라 바뀔 수 있습니다. 중요한 것은 **도구 스키마를 미리 받지 않고 파일 → CLI 순으로 스스로 찾아간다**는 점입니다.
+
+#### 🧪 테스트 질문 및 기대 결과 (실측):
+
+| 질문 | 주요 호출 도구 | 기대 답변 핵심 | 소요 시간(참고) |
+| :--- | :--- | :--- | :--- |
+| `"정보보안 지침상 데이터 반출 승인 절차는?"` | `search_company_policy` 1회 | DLP 결재 시스템으로 사전 신청 → 1차 소속 팀장, 2차 CISO 승인 (정보보안관리지침 제14조) | 약 20초 |
+| `"AgenticAI팀이 총괄하는 프로젝트의 예산과 승인권자는?"` | `search_graph_relations` → `query_enterprise_graphrag` | P-02 엔터프라이즈 Agentic RAG 플랫폼 구축, 총괄 PM 홍팀장, 예산 4억 8,000만원, 승인권자 송본부장 상무 | 약 30초 |
+| `"과장급 직원이 지방으로 당일 출장을 다녀오면 일비 감액 기준이 어떻게 되나요?"` | `search_company_policy` 여러 회 | 당일 출장 일비는 기준액의 50% 지급 (국내여비교통비지급규정 제15조). 사내 직급 체계에 '과장'이 없어 직급 매핑을 함께 설명 | 약 60초 |
+
+> 💡 같은 질문을 `tool_rag_agent`에도 던져 보고, **호출 횟수와 응답 시간**을 비교해 보세요. Skills 에이전트는 탐색 단계(파일 열람 2회 + `list_tools` 1회)만큼 느리지만, 에이전트 코드 수정 없이 도구를 늘릴 수 있습니다.
 
 ---
 
@@ -308,8 +327,8 @@ FastAPI 서버(`server.py`)와 Chainlit UI(`chainlit_ui.py`)가 띄워진 상태
 
 | 비교 항목 | Tool RAG (`tool_rag_agent`) | Skills RAG (`skill_rag_agent`) |
 | :--- | :--- | :--- |
-| **도구 바인딩 방식** | 파이썬 코드 레벨에서 `@tool`로 하드코딩 | `SKILL.md` + JSON 레지스트리 기반 동적 탐색 |
-| **초기 프롬프트 토큰** | 도구가 늘어날수록 토큰 급증 (100개면 수만 토큰 소모) | **0 토큰** (필요할 때만 파일을 열어보므로 고정 비용) |
+| **도구 바인딩 방식** | 파이썬 코드 레벨에서 `@tool`로 하드코딩 | `Skill.md` + JSON 레지스트리 기반 동적 탐색 |
+| **초기 프롬프트 토큰** | 도구가 늘어날수록 토큰 급증 (100개면 수만 토큰 소모) | **스킬 카탈로그 몇 줄로 고정** (도구 스키마는 필요할 때만 조회) |
 | **확장성 (Scalability)** | 새 도구 추가 시 파이썬 에이전트 코드 수정 및 서버 재시작 필요 | **서버 재시작 없음** (`mcp_servers.json`에 줄만 추가) |
 | **응답 속도** | 빠름 (곧바로 도구 1회 호출) | 단계별 탐색 과정으로 인해 호출 횟수 및 시간 소요 |
 | **실무 적용 추천** | 고정된 핵심 도구 3~5개를 쓰는 단일 목적 챗봇 | 사내 수십 개 마이크로서비스를 넘나드는 **자율형 기업 비서** |

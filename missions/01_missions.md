@@ -86,6 +86,9 @@ Your app is available at http://localhost:8080
 
 `app/agents/tool_rag_agent/agent.py` 파일을 열고, `create_agent_executor()` 함수를 완성합니다.
 
+> 📝 **시작 상태**: import 문과 `AGENT_METADATA`는 이미 작성되어 있고, `create_agent_executor()` 안에는 `TODO 1~3` 주석과 `raise NotImplementedError(...)`만 있습니다.  
+> 아래 코드의 함수 본문으로 **TODO 주석과 `raise NotImplementedError` 줄을 교체**하세요. (파일 전체를 아래 코드로 바꿔도 됩니다.)
+
 노트북 `1_Agentic_RAG.ipynb`의 Part 5에서 실습한 에이전트 조립 구조를 따르되, 서버가 재시작되어도 사용자와의 대화 기록이 영구 보존되도록 **`InMemorySaver` 대신 `AsyncSqliteSaver`**를 체크포인터로 연결합니다:
 
 ```python
@@ -149,33 +152,37 @@ async def create_agent_executor():
 #### 🧪 [시나리오 1] 단일 규정 검색 (Dense Semantic Search)
 - **질문**: `"팀원이 당일 출장을 가면 일비와 식비는 얼마를 받나요?"`
 - **도구 호출 관찰**:
-  - `search_company_policy(query='당일 출장 일비 식비')` 1회 호출
-- **기대 답변 핵심**:
-  - 국내 여비 규정 제15조에 근거하여, 당일 출장은 일비 50% 감액(10,000원), 식비는 100%(25,000원) 정액 지급됨을 정확한 조항과 함께 설명.
+  - `search_company_policy` 1회 호출 (예: `query='당일 출장 일비 식비 팀원 지급 기준'`)
+- **기대 답변 핵심** (국내 여비 규정 제15조):
+  - 일비: 팀원 기준액 25,000원의 50% → **12,500원**
+  - 식비: 당일 출장은 1식 → **12,000원**
 
-#### 🧪 [시나리오 2] 멀티홉 조직도 탐색 + 규정 결합 (Graph + Policy)
+#### 🧪 [시나리오 2] 멀티홉 조직도 탐색 + 전결 기준 결합 (Graph + GraphRAG)
 - **질문**: `"클라우드운영팀 김철수 수석의 본부장은 누구이고, 그 본부장의 결재가 필요한 프로젝트 예산 기준은?"`
 - **도구 호출 관찰 (Multi-step ReAct Loop)**:
-  1. `search_graph_relations(params={'seed_entity': '김철수 수석', 'max_hops': 2})` 호출 ➔ 직속 상위 보고선(클라우드사업본부) 파악
-  2. `search_company_policy` 또는 `query_enterprise_graphrag` 호출 ➔ 본부장 전결 예산 기준 검색
+  1. `search_graph_relations(seed_entity='김철수 수석', max_hops=2)` ➔ 소속 본부(클라우드사업본부) 파악
+  2. `search_graph_relations(seed_entity='클라우드사업본부')` 또는 `query_enterprise_graphrag(search_method='local')` ➔ 본부장과 전결 기준 확인
+  3. (선택) `search_company_policy`도 시도하지만, 예산 전결 기준은 사내 규정이 아니라 **조직 데이터**에 있으므로 그래프/GraphRAG 결과로 답합니다.
 - **기대 답변 핵심**:
-  - 김철수 수석의 소속 본부 및 보고 체계와 본부장 결재 한도(예: 5천만 원 이상 등 규정 수치)를 유기적으로 종합하여 답변.
+  - 본부장: **박영희 전무** (클라우드사업본부)
+  - 본부장 승인 대상: **5,000만원 이상 5억원 미만**의 전략 프로젝트 예산 및 계약 (5억원 이상은 대표이사·CFO 승인)
+  - 💡 한 번의 검색으로 끝나지 않고, 앞 결과(소속 본부)를 보고 다음 검색어를 정하는 **멀티홉 추론**이 핵심 관찰 포인트입니다.
 
 #### 🧪 [시나리오 3] 다중 문서 비교 검색 (Iterative Retrieval)
 - **질문**: `"2024년 1분기와 3분기의 반도체 수출 동향을 비교해줘."`
 - **도구 호출 관찰**:
-  - `search_bok_reports(query='2024년 1분기 반도체 수출 동향', quarter=1)` 호출
-  - `search_bok_reports(query='2024년 3분기 반도체 수출 동향', quarter=3)` 호출
-  - 👉 두 번에 나누어 개별 분기 데이터를 정밀하게 수집함을 확인!
+  - `search_bok_reports(query='반도체 수출 동향', quarter=1)` 호출
+  - `search_bok_reports(query='반도체 수출 동향', quarter=3)` 호출
+  - 👉 분기를 나누어 2번 호출하고, `quarter` 인자로 해당 분기 보고서만 검색함을 확인!
 - **기대 답변 핵심**:
-  - 1분기와 3분기 실적 수치(HBM 메모리 수요 등)를 대조표 또는 항목별로 명확히 비교.
+  - 분기별 반도체 수출 증가율(전년동기대비)을 표 또는 항목별로 비교 (실측 예: 1분기 +50.7%, 3분기 +41.4%)
 
 #### 🧪 [시나리오 4] 세션 맥락 유지 질의 (Conversational Continuity)
-- **질문 (시나리오 3에 이어서 전송)**: `"그럼 4분기 전망은 어때?"`
+- **질문 (시나리오 3에 이어서 같은 대화창에서 전송)**: `"그럼 4분기 전망은 어때?"`
 - **도구 호출 관찰**:
-  - `search_bok_reports(query='2024년 4분기 반도체 수출 전망', quarter=4)` 1회 호출
+  - `search_bok_reports(query='반도체 수출 전망 ...', quarter=4)` 호출 (3분기 보고서의 전망 부분을 추가로 조회하기도 합니다)
 - **기대 답변 핵심**:
-  - 사용자가 "반도체"라는 단어를 생략했음에도 불구하고, SQLite 체크포인터가 직전 대화 맥락을 기억하여 자동으로 반도체 4분기 전망을 검색하여 답변.
+  - 사용자가 "반도체"를 생략했지만, 체크포인터에 저장된 직전 대화를 기억하여 **반도체** 4분기 전망을 검색해 답변.
 
 #### 🧪 [시나리오 5] 범용 일상 대화 (Zero-Tool Fallback)
 - **질문**: `"안녕! 넌 뭘 할 수 있어?"`
@@ -190,7 +197,7 @@ async def create_agent_executor():
 
 프롬프트 엔지니어링만큼 강력한 **도구 설명(Tool Description)의 파급 효과**를 실험합니다.
 
-`app/agents/tool_rag_agent/tools.py` 파일을 열고, `search_bok_reports` 도구의 docstring에서 아래 가이드라인 문장 2줄을 임시로 주석 처리(`//` 또는 삭제)해 보세요:
+`app/agents/tool_rag_agent/tools.py` 파일을 열고, `search_bok_reports` 도구의 docstring에서 아래 가이드라인 문장 2줄을 **임시로 삭제**해 보세요. (docstring은 문자열이라 `#` 주석이 적용되지 않으니, 지운 줄은 메모장에 복사해 두세요.)
 
 ```python
 # tools.py - search_bok_reports 내부
