@@ -1,0 +1,8 @@
+{
+  "wikipedia": {
+    "name": "Wikipedia-MCP-Server",
+    "transport": "stdio",
+    "url": "npx -y wikipedia-mcp",
+    "description": "위키백과 백과사전 검색 및 문서 읽기 도구 (search, readArticle. 영문 query만 허용)"
+  }
+}

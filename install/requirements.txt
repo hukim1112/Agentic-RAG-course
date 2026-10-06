@@ -1,5 +1,5 @@
 # ===============================================================================
-# Enterprise Agentic RAG Course / Harness Engineering Dependencies
+# Enterprise Agentic RAG Course Dependencies
 # LangChain & LangGraph Verified Compatible Latest Stable Stack (2026-08)
 # ===============================================================================
 
@@ -35,24 +35,23 @@ aiosqlite
 pysqlite3-binary
 psycopg2-binary==2.9.11
 
-# 4. Knowledge Graph & GraphRAG (Lab 2)
+# 4. Knowledge Graph & GraphRAG
 networkx>=3.2
 pyvis>=0.3.2
-lancedb>=0.24.0
-graphrag>=3.1.0
-pyarrow>=18.0.0
+lancedb==0.24.3
+graphrag==3.1.0
+pyarrow>=22.0.0
 pyyaml>=6.0.1
 
-# 5. FastMCP Microservices & Web/Finance Tools (Lab 3 & Mission)
+# 5. FastMCP Microservices & Web/Finance Tools
 fastmcp==3.4.7
 langchain-mcp-adapters>=0.1.0
-requests>=2.31.0
 httpx==0.28.1
+httpx-sse
 sse-starlette==3.4.8
 yfinance>=1.0.0
-beautifulsoup4>=4.12.0
-duckduckgo_search>=8.1.1
 ddgs>=9.14.4
+duckduckgo_search>=8.1.1
 
 # 6. Document & Data Processing
 pdfplumber==0.11.8
@@ -66,13 +65,23 @@ protobuf
 datasets
 matplotlib
 pandas
+openpyxl>=3.1.5
 
 # 7. Web App & Serving Infrastructure
-gradio==6.23.1
+chainlit==2.11.1
 fastapi==0.141.1
 uvicorn==0.52.1
 pydantic==2.13.4
-streamlit==1.61.1
 imageio[ffmpeg]==2.37.4
-python-dotenv>=1.0.0
+
+# 8. HTTP, Parsing & Runtime Utilities
+aiohttp
+beautifulsoup4
+requests
+python-dotenv
+jsonschema
 nest-asyncio>=1.6.0
+
+# 9. Notebook & Kernel
+notebook==7.5.1
+ipykernel==7.1.0

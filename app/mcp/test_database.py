@@ -1,15 +1,13 @@
 """
 app/mcp/test_database.py
 ========================
-[4대 엔터프라이즈 RAG 데이터베이스 통합 검색 검증 및 MCP 도구 제작 레퍼런스 가이드]
+[4대 엔터프라이즈 RAG 데이터베이스 통합 검색 검증 (Mission 02)]
 
-📌 [교육생 필독 - MCP 도구 구현 시 참고 방법]
 이 스크립트는 `app/database/` 및 `app/database/graphrag/`에 구축된 4대 엔터프라이즈 데이터베이스를
-파이썬 코드로 직접 로드하고 검색하는 표준 레퍼런스 코드입니다.
+파이썬 코드로 직접 로드하고 검색하는 레퍼런스 코드입니다.
+`python app/mcp/build_database.py`로 DB를 다시 빌드한 뒤 이 스크립트로 검색 결과를 검증합니다.
 
-Mission 2-3에서 `app/mcp/enterprise_rag_server.py`의 FastMCP 도구를 구현할 때,
-아래 4개 함수의 [DB 로드 & 검색 패턴]을 그대로 복사하여 `@mcp.tool` 데코레이터 함수 내부에
-사용하시면 됩니다:
+각 DB의 로드 및 검색 패턴은 다음과 같습니다:
 
 1. [DB 1: 사내 규정집 Chroma Vector DB]
    - 로드: Chroma(collection_name="enterprise_policy_store", persist_directory="app/database/chroma_db", ...)
@@ -47,8 +45,8 @@ load_dotenv(os.path.join(PROJECT_ROOT, ".env"), override=True)
 
 from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
-from rag.networkx_graph import multi_hop_search
-from rag.graphrag_tool import run_graphrag_query
+from rag.graph.networkx_graph import multi_hop_search
+from rag.graph.graphrag_tool import run_graphrag_query
 
 # 공통 데이터베이스 디렉토리 경로
 DB_DIR = os.path.join(PROJECT_ROOT, "app/database")
@@ -71,7 +69,7 @@ def test_1_policy_vector_db():
     
     if not os.path.exists(CHROMA_DIR):
         print(f"  ❌ DB 디렉토리가 없습니다: {CHROMA_DIR}")
-        print("     먼저 'python app/mcp/generate_database.py'를 실행하여 DB를 생성하세요.")
+        print("     먼저 'python app/mcp/build_database.py'를 실행하여 DB를 생성하세요.")
         return
 
     # OpenAI 최신 임베딩 모델 (3072차원)
