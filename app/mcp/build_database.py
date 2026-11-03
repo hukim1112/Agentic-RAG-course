@@ -4,18 +4,18 @@ app/mcp/build_database.py
 엔터프라이즈 RAG 데이터베이스 빌드 스크립트 (Mission 02)
 
 노트북 2_Indexing.ipynb에서 배운 파이프라인을 그대로 사용해 app/database/를 구축합니다.
-비정형 문서는 형식(.md / .pdf)과 상관없이 rag.indexing.index_documents()
+비정형 문서는 형식(.md / .pdf)과 상관없이 rag.vector.indexing.index_documents()
 한 함수를 거쳐 인덱싱됩니다.
 
 빌드 대상 (--targets):
-  policy   : data/policies/*.md          → Chroma 컬렉션 'enterprise_policy_store'
-  bok      : data/bok_major_industry_reports/*.pdf → Chroma 컬렉션 'bok_industry_reports_store'
-  graph    : data/graph/org_relationships.txt → app/database/knowledge_graph_nodelink.json
-  graphrag : data/graphrag/ (사전 빌드 산출물) → app/database/graphrag/
+  policy   : data/policies/*.md                     → Chroma 컬렉션 'enterprise_policy_store'
+  aws      : data/tech_pdfs/aws_waf_series/*.pdf    → Chroma 컬렉션 'aws_waf_guides_store'
+  graph    : data/graph/org_relationships.txt       → app/database/knowledge_graph_nodelink.json
+  graphrag : data/graphrag/ (사전 빌드 산출물)        → app/database/graphrag/
 
 사용 예:
   python app/mcp/build_database.py                      # policy + graph (기본, 1~2분)
-  python app/mcp/build_database.py --targets bok        # BOK 보고서 154페이지 (수 분 소요)
+  python app/mcp/build_database.py --targets aws        # AWS 아키텍처 백서 4종 793페이지 (약 2~3분 소요)
   python app/mcp/build_database.py --targets policy --extra-docs data/new_documents
 
 빌드 결과가 마음에 들지 않으면 사전 구축본으로 되돌릴 수 있습니다:
@@ -42,8 +42,8 @@ import networkx as nx
 from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
 
-from rag.indexing import ContextualHeaderEnricher, index_documents
-from rag.preprocessing import BOK_PDF_OPTIONS, bok_metadata
+from rag.vector.indexing import ContextualHeader, index_documents
+from rag.vector.preprocessing.presets import AWS_PDF_OPTIONS, aws_metadata
 from rag.graph.networkx_graph import build_graph_from_triplets
 from rag.graph.triplet_extractor import extract_triplets
 
@@ -52,19 +52,21 @@ CHROMA_DIR = os.path.join(DB_DIR, "chroma_db")
 EMBEDDING_MODEL = "text-embedding-3-large"
 
 
-def _rebuild_collection(name: str, docs) -> None:
-    """같은 이름의 컬렉션을 지우고 새 청크로 다시 만듭니다."""
+def _rebuild_collection(name: str, docs, batch_size: int = 200) -> None:
+    """같은 이름의 컬렉션을 지우고 새 청크로 다시 만듭니다 (대용량 문서 대응 배치 적재)."""
     client = chromadb.PersistentClient(path=CHROMA_DIR)
     try:
         client.delete_collection(name)
     except Exception:
         pass
-    Chroma.from_documents(
-        documents=docs,
-        embedding=OpenAIEmbeddings(model=EMBEDDING_MODEL),
+    embeddings = OpenAIEmbeddings(model=EMBEDDING_MODEL)
+    vectorstore = Chroma(
         collection_name=name,
+        embedding_function=embeddings,
         persist_directory=CHROMA_DIR,
     )
+    for i in range(0, len(docs), batch_size):
+        vectorstore.add_documents(docs[i : i + batch_size])
 
 
 def _strip_for_chroma(docs):
@@ -74,30 +76,34 @@ def _strip_for_chroma(docs):
     return docs
 
 
-def build_policy(extra_dirs):
+def build_policy(extra_dirs, toc=None):
     paths = sorted(glob.glob("data/policies/*.md"))
     for extra in extra_dirs:
         paths += sorted(glob.glob(os.path.join(extra, "*.md")) + glob.glob(os.path.join(extra, "*.pdf")))
-    print(f"📦 [policy] 사내 규정 {len(paths)}개 문서 인덱싱")
+    chunker = ContextualHeader(chunk_size=500, chunk_overlap=0, toc=toc)
+    print(f"📦 [policy] 사내 규정 {len(paths)}개 문서 인덱싱 (toc={chunker.toc})")
     for p in paths:
         print(f"    - {p}")
-    docs, _ = index_documents(paths, ContextualHeaderEnricher(chunk_size=500, chunk_overlap=50), doc_id_start=0)
+    docs, _ = index_documents(paths, chunker, doc_id_start=0)
     _rebuild_collection("enterprise_policy_store", _strip_for_chroma(docs))
     print(f"  ✅ enterprise_policy_store: {len(docs)}개 청크")
 
 
-def build_bok():
-    paths = sorted(glob.glob("data/bok_major_industry_reports/*.pdf"))
-    print(f"📦 [bok] 한국은행 보고서 {len(paths)}개 PDF 정규화 및 인덱싱 (수 분 소요)")
+def build_aws(toc=None):
+    paths = sorted(glob.glob("data/tech_pdfs/aws_waf_series/*.pdf"))
+    chunker = ContextualHeader(chunk_size=500, chunk_overlap=0, toc=toc)
+    print(f"📦 [aws] AWS Well-Architected 백서 {len(paths)}개 PDF 정규화 및 인덱싱 (toc={chunker.toc})")
+    for p in paths:
+        print(f"    - {p}")
     docs, _ = index_documents(
         paths,
-        ContextualHeaderEnricher(chunk_size=600, chunk_overlap=60),
+        chunker,
         doc_id_start=100,
-        pdf_options=BOK_PDF_OPTIONS,
-        extra_metadata=bok_metadata,
+        pdf_options=AWS_PDF_OPTIONS,
+        extra_metadata=aws_metadata,
     )
-    _rebuild_collection("bok_industry_reports_store", _strip_for_chroma(docs))
-    print(f"  ✅ bok_industry_reports_store: {len(docs)}개 청크")
+    _rebuild_collection("aws_waf_guides_store", _strip_for_chroma(docs))
+    print(f"  ✅ aws_waf_guides_store: {len(docs)}개 청크")
 
 
 def build_graph():
@@ -124,7 +130,7 @@ def sync_graphrag():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Enterprise RAG database builder")
     parser.add_argument("--targets", nargs="+", default=["policy", "graph"],
-                        choices=["policy", "bok", "graph", "graphrag"], help="빌드할 대상")
+                        choices=["policy", "aws", "graph", "graphrag"], help="빌드할 대상")
     parser.add_argument("--extra-docs", nargs="*", default=[],
                         help="policy 컬렉션에 함께 인덱싱할 추가 문서 폴더 (.md / .pdf)")
     args = parser.parse_args()
@@ -132,7 +138,7 @@ if __name__ == "__main__":
     os.makedirs(CHROMA_DIR, exist_ok=True)
     builders = {
         "policy": lambda: build_policy(args.extra_docs),
-        "bok": build_bok,
+        "aws": build_aws,
         "graph": build_graph,
         "graphrag": sync_graphrag,
     }

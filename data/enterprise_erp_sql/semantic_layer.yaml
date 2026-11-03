@@ -1,0 +1,212 @@
+# =============================================================================
+# (주)넥스트AI 엔터프라이즈 ERP — 시멘틱 레이어 (Semantic Layer)
+# =============================================================================
+# rag.sql.DatabaseProfile.load()가 이 파일과 enterprise_erp.db를 합쳐 프로필을 만듭니다.
+#
+#   DB에서 자동 추출 (여기에 쓰지 않음): 컬럼 타입, PK, FK(조인 경로), CHECK 허용값, 샘플 행
+#   여기에 사람이 작성:                  설명, 동의어, 비즈니스 규칙, 지표(metric) 정의
+#
+# 작성 원칙
+#   - DB 밖의 기준값(규정상 숙박비 한도, 도시 등급, GPU 유휴 판정 기준 등)은 넣지 않습니다.
+#     이런 값은 메인 에이전트가 사내 규정 검색으로 찾아 context(참고 기준값)로 넘깁니다.
+#   - 평가 시나리오(data/enterprise_erp_sql/README.md A~D)의 정답 SQL은 넣지 않습니다.
+#   - 테이블·컬럼 이름이 DB와 다르면 로드 시 ValueError가 납니다 (스키마 변경 감지).
+# =============================================================================
+
+database:
+  name: enterprise_erp
+  title: (주)넥스트AI 엔터프라이즈 ERP
+  dialect: SQLite
+  db_file: enterprise_erp.db
+  description: >-
+    부서·임직원 조직 정보, 전사 전략 프로젝트와 투입 인력, 프로젝트별 지출 결의(전표),
+    GPU 클러스터 할당·가동 현황, 부서별·비목별 운영 예산을 관리하는 사내 ERP 데이터베이스입니다.
+
+global_rules:
+  - "실집행액(실제 사용한 예산)은 expense_transactions에서 approval_status = '승인완료'인 건의 amount_krw 합계입니다. '결재대기'와 '반려'는 포함하지 않습니다."
+  - "projects 테이블에는 실집행액 컬럼이 없습니다. 예산 집행 관련 질문은 반드시 expense_transactions를 JOIN해 집계하세요."
+  - "예산은 두 종류입니다. 프로젝트(P-01~P-06) 예산은 projects + expense_transactions, 부서 운영 예산(비목별)은 department_budgets에서 조회합니다. 질문에 프로젝트가 나오면 프로젝트 예산, 부서·팀과 비목이 나오면 부서 운영 예산으로 해석하고, 어느 쪽으로 해석했는지 assumptions에 적으세요."
+  - "'현재 진행 중인 프로젝트'는 projects.status = '진행중'으로 해석합니다."
+  - "금액 컬럼(*_krw)은 모두 원(KRW) 단위 정수입니다."
+  - "날짜 컬럼은 'YYYY-MM-DD' 형식의 TEXT입니다. 기간 조건에는 문자열 비교나 strftime()을 사용하세요."
+  - "일부 임직원은 이름에 직급·직책 단어가 들어 있습니다(예: 정수석, 홍팀장, 송본부장). 이런 표현은 먼저 employees.name 값으로 해석하고, 직급은 rank, 직책은 role 컬럼으로 구분하세요."
+  - "어떤 직원의 상위 결재권자(팀장·본부장)는 employees.manager_emp_id 자기참조로 찾습니다."
+  - "도시 등급(서울/광역시/기타), 직급별 숙박비 한도, GPU 유휴 판정 기준 같은 규정 기준값은 DB에 없습니다. [참고 기준값]으로 받은 값만 사용하세요."
+
+# 질문 정규화용 동의어 (rag.vector.retrieval.DomainDictionary에 추가됩니다. 부서 약칭은 기본 사전에 이미 있음)
+synonyms:
+  결재 대기: 결재대기
+  승인 완료: 승인완료
+  국내 출장: 국내출장
+  해외 출장: 해외출장
+  샌프란: 샌프란시스코
+
+tables:
+  departments:
+    description: 부서 마스터. 4개 본부 산하 7개 팀의 부서명, 약칭, 소속 본부, 연간 예산
+    synonyms: [부서, 팀, 조직, 본부]
+    columns:
+      dept_code: 부서 코드 (예 DEPT-AI-01)
+      dept_name:
+        description: 공식 부서명
+        value_lookup: true
+      dept_alias:
+        description: 사내에서 부르는 부서 약칭 (예 클운팀, 에이팀)
+        value_lookup: true
+      division_name:
+        description: 소속 본부명
+        value_lookup: true
+      head_emp_id: 부서장(팀장) 사번 → employees.emp_id
+      annual_budget_krw: 부서 연간 운영 예산 (원)
+      office_location: 사무실 위치
+
+  employees:
+    description: 임직원 마스터. 이름, 직급, 직책, 소속 부서, 직속 상관, 보안 등급, 기본급
+    synonyms: [직원, 임직원, 사원, 사람, 인력, 결재자, 기안자, 팀장, 본부장]
+    columns:
+      emp_id: 사번 (예 EMP-2021-001)
+      name:
+        description: 이름. 이름에 직급·직책 단어가 들어간 직원이 있으니 주의 (정수석, 홍팀장 등)
+        value_lookup: true
+      rank: 직급
+      role: 직책
+      dept_code: 소속 부서 코드
+      manager_emp_id: 직속 상관 사번 (자기참조). 팀원 → 팀장 → 본부장 순서로 올라감. 본부장·CISO는 NULL
+      security_clearance: 보안 등급
+      hire_date: 입사일
+      base_salary_krw: 연 기본급 (원)
+    rules:
+      - 직급 서열은 전무 > 상무 > 수석 > 책임 > 선임 > 전임 입니다.
+
+  projects:
+    description: 전사 전략 프로젝트(P-01~P-06). 주관 부서, 총괄 PM, 승인권자, 승인 예산, 상태, 위험도, 선행 프로젝트
+    synonyms: [프로젝트, 과제, 전략과제, 사업]
+    columns:
+      project_id:
+        description: 프로젝트 코드 (예 P-02)
+        value_lookup: true
+      project_name:
+        description: 프로젝트명
+        value_lookup: true
+      lead_dept_code: 주관 부서 코드
+      pm_emp_id: 총괄 PM 사번
+      approver_emp_id: 프로젝트 승인권자 사번
+      approved_budget_krw: 승인 예산 (원). 실집행액은 이 테이블에 없음
+      status: 진행 상태
+      risk_level: 위험도
+      depends_on_project_id: 선행 의존 프로젝트 코드 (자기참조)
+      start_date: 시작일
+      end_date: 종료 예정일
+    rules:
+      - 예산 집행률·실집행액은 expense_transactions를 JOIN해 계산합니다 (지표 spent_budget, budget_burn_rate 참고).
+
+  project_members:
+    description: 프로젝트-임직원 투입 매핑(N:M). 투입 역할과 투입률
+    synonyms: [투입인력, 참여자, 프로젝트 멤버, 파견, 투입률]
+    columns:
+      id: 일련번호
+      project_id: 프로젝트 코드
+      emp_id: 투입 임직원 사번
+      assigned_role: 프로젝트 내 역할
+      allocation_pct: 투입률 (%). 한 사람이 여러 프로젝트에 나누어 투입될 수 있음
+      joined_date: 투입 시작일
+
+  expense_transactions:
+    description: 프로젝트별 지출 결의(전표). 기안자, 결재자, 비목, 출장지, 박수, 금액, 결재 상태
+    synonyms: [지출, 지출결의, 품의, 전표, 경비, 비용, 집행, 출장비, 숙박비, 결재]
+    columns:
+      tx_id: 전표 번호 (예 TX-2026-0001)
+      project_id: 비용을 집행한 프로젝트 코드
+      requester_emp_id: 기안자 사번
+      approver_emp_id: 결재자(현재 지정된 결재권자) 사번
+      category: 비목
+      destination_city:
+        description: 출장지 도시. 출장이 아닌 비목은 NULL
+        value_lookup: true
+      nights: 숙박 일수(박). 숙박이 없으면 0
+      amount_krw: 청구 금액 (원). 출장 건은 숙박비 총액
+      approval_status: 결재 상태
+      tx_date: 기안일
+      description: 지출 내용 설명
+    rules:
+      - 1박당 금액을 구할 때는 nights가 0인 건을 제외하거나 NULLIF(nights, 0)로 나누세요.
+
+  gpu_cluster_allocations:
+    description: GPU 클러스터 할당·가동 현황. GPU 모델, 노드 수, 서빙 엔진, KV 캐시 낭비율, 평균 가동률, 월 비용
+    synonyms: [GPU, 클러스터, 서빙, 추론 인프라, 가동률, 유휴]
+    columns:
+      allocation_id:
+        description: 클러스터 할당 ID (예 GPU-CLUST-01)
+        value_lookup: true
+      project_id: 클러스터를 사용하는 프로젝트 코드
+      managed_by_dept_code: 관리 부서 코드
+      gpu_model: GPU 모델
+      node_count: 노드 수
+      gpus_per_node: 노드당 GPU 수
+      serving_engine: LLM 서빙 엔진
+      kv_cache_waste_pct: KV 캐시 메모리 낭비율 (%)
+      avg_utilization_pct: 주간 평균 가동률 (%)
+      monthly_cost_krw: 월 비용 (원)
+      region: 클라우드 리전
+
+  department_budgets:
+    description: 부서별·비목별 연간 운영 예산 편성액과 누적 집행액 (재무관리팀 예산 통제 원장). 프로젝트 예산과 별도
+    synonyms: [부서 예산, 운영 예산, 운영비, 비목 예산, 예산 편성, 예산 통제, 계정]
+    columns:
+      budget_id: 예산 편성 ID (예 BUD-2026-01)
+      fiscal_year: 회계 연도
+      dept_code: 예산을 편성받은 부서 코드
+      account_code: ERP 계정 코드. 비목과 1:1 대응 (국내출장=ACC-5101, 해외출장=ACC-5102, GPU클러스터임차=ACC-5201, 외주용역=ACC-5301, 보안감사=ACC-5401, 교육훈련=ACC-5501)
+      category: 예산 비목. expense_transactions.category와 같은 분류
+      allocated_krw: 연간 편성 예산 (원)
+      spent_krw: 누적 확정 집행액 (원). 이 테이블은 집행액을 직접 저장함
+      as_of_date: 집행액 집계 기준일
+    rules:
+      - 부서별 allocated_krw 합계는 departments.annual_budget_krw와 같습니다.
+      - 부서 예산 집행률은 지표 dept_budget_utilization을 사용하세요 (소수점 첫째 자리 반올림).
+
+metrics:
+  spent_budget:
+    name: 실집행액(원)
+    synonyms: [실집행, 집행액, 사용 예산, 쓴 돈]
+    description: 프로젝트별로 결재가 승인완료된 지출 금액의 합계
+    expression: "SUM(CASE WHEN tx.approval_status = '승인완료' THEN tx.amount_krw ELSE 0 END)"
+    tables: [projects, expense_transactions]
+    join_hint: "projects p LEFT JOIN expense_transactions tx ON p.project_id = tx.project_id ... GROUP BY p.project_id"
+
+  budget_burn_rate:
+    name: 프로젝트 예산 집행률(%)
+    synonyms: [프로젝트 집행률, 집행률, 소진율, 예산 소진, 예산 사용률]
+    description: 프로젝트 실집행액을 승인 예산으로 나눈 비율
+    expression: "ROUND(SUM(CASE WHEN tx.approval_status = '승인완료' THEN tx.amount_krw ELSE 0 END) * 100.0 / p.approved_budget_krw, 2)"
+    tables: [projects, expense_transactions]
+    join_hint: "projects p LEFT JOIN expense_transactions tx ON p.project_id = tx.project_id ... GROUP BY p.project_id"
+
+  dept_budget_utilization:
+    name: 부서 예산 집행률(%)
+    synonyms: [부서 집행률, 비목 집행률, 운영비 집행률, utilization_pct]
+    description: 부서·비목별 누적 확정 집행액을 편성 예산으로 나눈 비율
+    expression: "ROUND(b.spent_krw * 100.0 / b.allocated_krw, 1)"
+    tables: [department_budgets]
+    join_hint: "department_budgets b JOIN departments d ON b.dept_code = d.dept_code"
+
+  pending_amount:
+    name: 결재대기 금액(원)
+    synonyms: [미결재 금액, 대기 금액, 승인 대기 금액]
+    description: 아직 결재되지 않은 지출 결의 금액의 합계
+    expression: "SUM(CASE WHEN tx.approval_status = '결재대기' THEN tx.amount_krw ELSE 0 END)"
+    tables: [expense_transactions]
+
+  amount_per_night:
+    name: 1박당 청구 금액(원)
+    synonyms: [1박당 숙박비, 1박 금액, 박당 금액]
+    description: 출장 건의 청구 금액을 숙박 일수로 나눈 값
+    expression: "tx.amount_krw / NULLIF(tx.nights, 0)"
+    tables: [expense_transactions]
+
+  total_gpus:
+    name: 총 GPU 수(기)
+    synonyms: [GPU 수, GPU 개수, 총 GPU]
+    description: 클러스터의 전체 GPU 수
+    expression: "g.node_count * g.gpus_per_node"
+    tables: [gpu_cluster_allocations]

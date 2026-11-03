@@ -144,11 +144,35 @@ async def _process_sse_stream(
     UI가 도구 호출 리스트로 가득 차는 것을 방지합니다.
     """
     tool_group_step: Optional[cl.Step] = None  # 도구 그룹 부모 Step
+    queued_step: Optional[cl.Step] = None      # Double-Texting 대기열 안내 Step
     tool_count = 0           # 총 도구 호출 수
     completed_count = 0      # 완료된 도구 수
 
     async for event in stream_generator:
         event_type = event.get("type")
+
+        # 0. Double-Texting 대기열 진입 알림 (앞선 실행이 끝날 때까지 대기 중)
+        if event_type == "queued":
+            if queued_step is None:
+                queued_step = cl.Step(
+                    name="⏳ 이전 작업 완료 대기 중",
+                    type="run",
+                )
+                queued_step.output = "동일 대화방에서 진행 중인 이전 작업이 끝나면 자동으로 이어서 실행됩니다..."
+                await queued_step.send()
+            continue
+
+        # 실제 실행 이벤트(도구 호출/토큰/인터럽트)가 시작되면 대기 안내 Step 완료 처리
+        if queued_step is not None and event_type in ("tool_start", "token", "interrupt"):
+            queued_step.name = "✅ 대기 완료 — 실행 시작"
+            queued_step.output = "이전 작업이 완료되어 요청하신 작업을 시작했습니다."
+            await queued_step.update()
+            queued_step = None
+        elif queued_step is not None and event_type == "error":
+            queued_step.name = "❌ 대기/실행 중 오류 발생"
+            queued_step.output = event.get("error") or event.get("content", "오류가 발생했습니다.")
+            await queued_step.update()
+            queued_step = None
 
         # 1. 도구 호출 시작 → 그룹 Step 하위에 중첩 렌더링
         if event_type == "tool_start":
@@ -218,6 +242,10 @@ async def _process_sse_stream(
             error_msg = event.get("error") or event.get("content", "알 수 없는 에러")
             await cl.Message(content=f"❌ **에러:** {error_msg}").send()
             return None
+
+    if queued_step is not None:
+        queued_step.name = "✅ 대기 완료"
+        await queued_step.update()
 
     # 정상 종료 시 미완료 그룹 Step 마무리
     if tool_group_step and tool_count > 0:
@@ -467,6 +495,8 @@ async def on_message(message: cl.Message):
     """
     profile = cl.user_session.get("chat_profile") or "chatbot"
     thread_id = cl.context.session.thread_id or str(uuid.uuid4())
+    cl_user = cl.user_session.get("user")
+    user_id = getattr(cl_user, "identifier", None) or "default"
 
     final_message = cl.Message(content="")
     active_steps: Dict[str, cl.Step] = {}
@@ -474,7 +504,7 @@ async def on_message(message: cl.Message):
     try:
         # 1. 초기 스트림
         interrupt_event = await _process_sse_stream(
-            api_client.stream(profile, message.content, thread_id),
+            api_client.stream(profile, message.content, thread_id, user_id=user_id),
             final_message,
             active_steps,
         )
@@ -485,7 +515,7 @@ async def on_message(message: cl.Message):
 
             # Resume 호출 → 다시 스트리밍 (연쇄 interrupt 가능)
             interrupt_event = await _process_sse_stream(
-                api_client.resume(profile, thread_id, decisions),
+                api_client.resume(profile, thread_id, decisions, user_id=user_id),
                 final_message,
                 active_steps,
             )

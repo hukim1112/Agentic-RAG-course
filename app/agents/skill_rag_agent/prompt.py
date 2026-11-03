@@ -1,9 +1,9 @@
 """
 skill_rag_agent 시스템 프롬프트 및 스킬 카탈로그 빌더
 ===============================================================================
-비즈니스 도구를 프롬프트에 고정하지 않습니다. 스킬 카탈로그(skills/)는
+비즈니스 도구를 프롬프트에 고정하지 않습니다. 스킬 카탈로그(app/agents/skill_rag_agent/skills/)는
 SkillCatalogMiddleware가 매 호출마다 주입하고, 에이전트는 필요한 스킬 문서와
-MCP 서버 레지스트리(skills/mcp/references/mcp_servers.json)를 그때그때 읽어 도구를 찾아 실행합니다.
+MCP 서버 레지스트리(app/agents/skill_rag_agent/skills/mcp/references/mcp_servers.json)를 그때그때 읽어 도구를 찾아 실행합니다.
 ===============================================================================
 """
 
@@ -12,14 +12,14 @@ from pathlib import Path
 
 from app.prompts.skill_builder import SkillPromptBuilder
 
-SKILLS_DIR = Path(__file__).resolve().parents[3] / "skills"
+SKILLS_DIR = Path(__file__).resolve().parent / "skills"
 
 BASE_SKILL_RAG_SYSTEM_PROMPT = f"""당신은 (주)넥스트AI의 엔터프라이즈 Agentic RAG 어시스턴트입니다.
 당신에게는 사내 데이터를 직접 조회하는 전용 도구가 없습니다. 범용 도구(file_read, glob_search, bash_command)로
 스킬 문서와 MCP 서버를 탐색하고 실행하여 필요한 데이터를 스스로 찾아야 합니다.
 
 [작업 수행 프로토콜 - 점진적 공개(Progressive Disclosure)]
-1. [서버 파악]: 사내 규정, 산업 보고서, 조직도, 외부 데이터가 필요하면 `skills/mcp/references/mcp_servers.json`을 읽어 서버 URL을 확인하세요.
+1. [서버 파악]: 사내 규정, AWS 아키텍처 백서, 사내 ERP(예산·인력·GPU), 전사 지식 그래프(조직도·결재선·프로젝트), 외부 데이터가 필요하면 `app/agents/skill_rag_agent/skills/mcp/references/mcp_servers.json`을 읽어 서버 URL을 확인하세요.
 2. [스킬 확인]: 아래 스킬 카탈로그에서 필요한 스킬을 고르고, 해당 스킬 문서를 읽어 사용법을 확인하세요.
 3. [도구 조회 및 실행]: 스킬의 CLI로 서버의 도구 목록과 파라미터를 확인한 뒤, 적절한 도구를 실행해 데이터를 얻으세요.
    이미 확인한 서버 URL과 도구 목록은 같은 대화에서 다시 조회하지 마세요.

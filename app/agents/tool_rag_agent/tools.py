@@ -11,21 +11,22 @@ DB 인스턴스는 첫 호출 시점에 지연 로드합니다. (서버가 에�
 """
 
 import os
-import json
 import threading
 from functools import lru_cache
-from typing import Optional
 
-import networkx as nx
 from langchain_core.tools import tool
 from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
 
-from rag.graph.networkx_graph import multi_hop_search
-from rag.graph.graphrag_tool import run_graphrag_query
+from app.utils import init_chat_model
+from rag.graph.graph_explorer import graph_explorer_tools
+from rag.sql import Text2SQL
+from rag.vector.retrieval import HybridRetriever
 
 DB_DIR = "app/database"
 CHROMA_DIR = os.path.join(DB_DIR, "chroma_db")
+SEMANTIC_LAYER_PATH = "data/enterprise_erp_sql/semantic_layer.yaml"
+ERP_DB_PATH = os.path.join(DB_DIR, "enterprise_erp.db")
 
 # 에이전트가 도구를 병렬로 호출하면 여러 스레드가 동시에 DB를 처음 로드할 수 있습니다.
 # Chroma 클라이언트 생성은 스레드 안전하지 않으므로 최초 로드를 직렬화합니다.
@@ -51,86 +52,84 @@ def _load_vectorstore(collection_name: str) -> Chroma:
     )
 
 
-def _graph() -> nx.Graph:
+def _policy_retriever() -> HybridRetriever:
     with _load_lock:
-        return _load_graph()
+        return _load_policy_retriever()
 
 
 @lru_cache(maxsize=1)
-def _load_graph() -> nx.Graph:
-    with open(os.path.join(DB_DIR, "knowledge_graph_nodelink.json"), "r", encoding="utf-8") as f:
-        return nx.node_link_graph(json.load(f))
+def _load_policy_retriever() -> HybridRetriever:
+    return HybridRetriever.from_chroma(_load_vectorstore("enterprise_policy_store"), window_size=2)
 
 
-@tool(parse_docstring=True)
+def _aws_retriever() -> HybridRetriever:
+    with _load_lock:
+        return _load_aws_retriever()
+
+
+@lru_cache(maxsize=1)
+def _load_aws_retriever() -> HybridRetriever:
+    return HybridRetriever.from_chroma(_load_vectorstore("aws_waf_guides_store"), window_size=2)
+
+
+def _erp_text2sql() -> Text2SQL:
+    with _load_lock:
+        return _load_erp_text2sql()
+
+
+@lru_cache(maxsize=1)
+def _load_erp_text2sql() -> Text2SQL:
+    db_path = ERP_DB_PATH if os.path.exists(ERP_DB_PATH) else None
+    llm = init_chat_model(model="gemini-3.8-flash", temperature=0.0)
+    return Text2SQL.from_semantic_layer(
+        SEMANTIC_LAYER_PATH,
+        llm=llm,
+        db_path=db_path,
+        embeddings=_embeddings(),
+    )
+
+
+@tool
 def search_company_policy(query: str) -> str:
-    """사내 규정(국내여비교통비, 인사복무, 정보보안)을 검색하여 상세 조항과 감액 기준을 반환합니다.
-    직급별 숙박비/일비 한도, 당일 출장 감액 기준, 보안 승인 절차 등을 조회할 때 사용합니다.
-    서로 다른 규정을 함께 확인해야 하면 주제별로 나누어 여러 번 호출하세요.
-
-    Args:
-        query: 검색할 사내 규정 관련 자연어 질의
     """
-    docs = _vectorstore("enterprise_policy_store").similarity_search(query, k=2)
+    사내 5대 공식 규정 문서(국내여비교통비지급규정, 인사복무규정, 정보보안관리지침, 전사위임전결및예산집행규정, 클라우드및GPU인프라운영지침)에서 출장비 기준, 인사·징계 양정, 보안 반출 절차, 금액별 전결 기준, GPU 유휴 회수 규정 등 사내 제도·원칙 조항을 검색합니다.
+
+    반환 형태: 검색된 조항의 앞뒤 문맥이 결합된 본문과 함께 상단에 [문서 전체 목차(TOC)] 및 [현재 위치 경로(Breadcrumb)]가 포함된 텍스트를 반환합니다.
+    """
+    docs = _policy_retriever().search(query, top_k=2)
     if not docs:
         return f"'{query}' 관련 사내 규정을 찾지 못했습니다."
     return "\n\n".join(f"[{d.metadata.get('breadcrumb', '사내규정')}]:\n{d.page_content}" for d in docs)
 
 
-@tool(parse_docstring=True)
-def search_bok_reports(query: str, quarter: Optional[int] = None) -> str:
-    """한국은행(BOK) 2024년 분기별 주력산업 모니터링 보고서(반도체, 자동차 등)의 실적과 전망을 검색합니다.
-    한 번의 호출에는 '특정 1개 분기'와 '특정 1개 산업'만 검색하세요.
-    분기 비교나 산업 비교가 필요하면 분기별/산업별로 나누어 여러 번 호출하세요.
-    특정 분기의 수치가 필요하면 quarter를 지정해야 다른 분기 보고서가 섞이지 않습니다.
-
-    Args:
-        query: 검색할 산업과 지표 (예: '반도체 수출 증가율')
-        quarter: 2024년 분기 번호(1~4). 지정하면 해당 분기 보고서에서만 검색합니다.
+@tool
+def search_aws_guides(query: str) -> str:
     """
-    search_kwargs = {"filter": {"quarter": quarter}} if quarter in (1, 2, 3, 4) else {}
-    docs = _vectorstore("bok_industry_reports_store").similarity_search(query, k=3, **search_kwargs)
+    AWS Well-Architected Framework 4대 아키텍처 백서(Security, Reliability, Performance Efficiency, Cost Optimization)에서 클라우드 설계 원칙, 모범 사례(Best Practice), 흔한 안티패턴(Common anti-patterns), 구현 지침을 검색합니다.
+
+    반환 형태: 검색된 모범 사례의 앞뒤 문맥이 결합된 본문과 함께 상단에 [문서 전체 목차(TOC)] 및 [현재 위치 경로(Breadcrumb)]가 포함된 텍스트를 반환합니다.
+    """
+    docs = _aws_retriever().search(query, top_k=2)
     if not docs:
-        return f"'{query}' 관련 산업보고서를 찾지 못했습니다."
-    return "\n\n".join(
-        f"[{d.metadata.get('breadcrumb', '산업보고서')}]:\n"
-        f"{d.metadata.get('raw_content', d.page_content)}"
-        for d in docs
-    )
+        return f"'{query}' 관련 AWS 아키텍처 백서를 찾지 못했습니다."
+    return "\n\n".join(f"[{d.metadata.get('breadcrumb', 'AWS 백서')}]:\n{d.page_content}" for d in docs)
 
 
-@tool(parse_docstring=True)
-def search_graph_relations(seed_entity: str, max_hops: int = 2) -> str:
-    """조직도 지식 그래프에서 특정 인물/부서의 상위 보고선(본부장), 동료, 프로젝트 연결 관계를 탐색합니다.
-    결재선이나 소속 본부처럼 여러 단계를 거쳐야 하는 관계 질문에 사용합니다.
-
-    Args:
-        seed_entity: 관계를 탐색할 출발 인물명 또는 부서명 (예: '김철수 수석', '클라우드운영팀')
-        max_hops: 탐색 깊이 (1: 직속 관계, 2: 상위 본부/프로젝트까지 확장, 최대 3)
+@tool
+def search_enterprise_erp(query: str, context: str = "") -> str:
     """
-    max_hops = max(1, min(max_hops, 3))
-    sub_edges, _ = multi_hop_search(_graph(), seed_entities=[seed_entity], max_hops=max_hops)
-    if not sub_edges:
-        return f"엔티티 '{seed_entity}'와 연결된 관계를 찾을 수 없습니다."
-    return "\n".join(f"- [{u}] ──({d.get('relation', '연결됨')})──> [{v}]" for u, v, d in sub_edges)
+    사내 ERP 정형 데이터베이스(부서 마스터, 임직원 명부, 전략 프로젝트 및 투입 인력, 프로젝트 지출 결의 전표, GPU 클러스터 할당·가동률 대장, 부서별·비목별 운영 예산 원장)에서 실시간 수치와 현황 레코드를 조회합니다.
+    query에는 SQL 문이 아니라 자연어 질문을 넣으세요. SQL은 이 도구가 스키마를 보고 직접 생성합니다.
 
-
-@tool(parse_docstring=True)
-def query_enterprise_graphrag(query: str, search_method: str = "global") -> str:
-    """Microsoft GraphRAG로 전사 프로젝트 종합 분석(global) 또는 특정 인물/부서의 심층 맥락(local)을 조회합니다.
-
-    Args:
-        query: 전사 프로젝트 거시 분석 또는 특정 인물/부서 관련 질의문
-        search_method: 전사 종합 요약은 'global', 특정 인물/개체 심층 분석은 'local'
+    반환 형태: 자연어 질의를 변환해 실행한 SELECT SQL 쿼리문, 적용한 해석 가정, 조회된 결과 마크다운 표(컬럼명 및 행 데이터)를 반환합니다.
     """
-    if search_method not in ("global", "local"):
-        search_method = "global"
-    return run_graphrag_query(query, method=search_method, root_dir=os.path.join(DB_DIR, "graphrag"))
+    return _erp_text2sql().invoke(query, context=context).to_text()
 
 
 tools_tool_rag = [
     search_company_policy,
-    search_bok_reports,
-    search_graph_relations,
-    query_enterprise_graphrag,
+    search_aws_guides,
+    search_enterprise_erp,
+    # GraphRAG 인덱스를 단계적으로 탐색하는 그래프 도구 5종 (rag/graph/graph_explorer.py)
+    *graph_explorer_tools,
 ]

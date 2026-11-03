@@ -1,17 +1,27 @@
 """
 app/mcp/enterprise_rag_server.py
 ================================
-[Mission 03] Enterprise RAG FastMCP Server (Stateless Streamable HTTP + Bearer 인증)
+[Mission 02] Enterprise RAG FastMCP Server (Stateless Streamable HTTP + Bearer 인증 · 도구별 인가)
 
-사내 규정집, 한국은행 산업보고서, 조직 지식 그래프 및 Microsoft GraphRAG를
-FastMCP 도구로 노출하는 엔터프라이즈 RAG 마이크로서비스 서버입니다.
+사내 규정집(Vector), AWS 아키텍처 백서(Vector), 전사 지식 그래프(GraphRAG), 사내 ERP(Text2SQL)를
+FastMCP 도구(`search_*` 3종 + 지식 그래프 탐색 `graph_*` 5종)로 노출하는 엔터프라이즈 RAG 마이크로서비스 서버입니다.
 
 인증:
   .env의 ENTERPRISE_RAG_MCP_TOKEN과 일치하는 Bearer 토큰을 가진 클라이언트만 도구를 호출할 수 있습니다.
-  토큰에는 'rag:read' 스코프가 부여되며, 모든 도구는 이 스코프를 요구합니다.
+  이 토큰은 에이전트용 서비스 계정으로 모든 도구를 쓸 수 있습니다.
+  역할별 테스트 토큰은 '<기본 토큰>:partner', ':staff', ':manager', ':executive' 형태입니다.
 
-👉 TODO 1, 2, 4, 5를 완성하세요. (missions/03_missions.md 2~3단계 참고)
-   검색 로직은 app/mcp/test_database.py의 각 테스트 함수와 같습니다.
+인가 (두 층):
+  1층 scope  도메인 접근권  도구마다 require_scopes("<도메인>:read")
+  2층 등급   데이터 등급     도구의 class:* 태그 ≤ 사용자의 clearance claim (서버 전역 AuthMiddleware)
+
+  도구                       tag                              scope
+  search_company_policy      data:docs   class:internal        docs:read
+  search_aws_guides          data:docs   class:public          docs:read
+  search_enterprise_erp      data:erp    class:confidential    erp:read
+  graph_* (탐색 도구 5종)     data:graph  class:confidential    graph:read
+
+👉 TODO 1, 2, 4, 5를 완성하세요. (missions/02_missions.md 2~3단계 참고)
 
 실행:
   python app/mcp/enterprise_rag_server.py            # http://localhost:8010/mcp
@@ -19,15 +29,13 @@ FastMCP 도구로 노출하는 엔터프라이즈 RAG 마이크로서비스 서�
 
 import os
 import sys
-import json
 import argparse
-import networkx as nx
-from enum import Enum
 from typing import Annotated, Optional
-from pydantic import BaseModel, Field
+from pydantic import Field
 from fastmcp import FastMCP
-from fastmcp.server.auth import require_scopes
+from fastmcp.server.auth import AuthContext, require_scopes
 from fastmcp.server.auth.providers.jwt import StaticTokenVerifier
+from fastmcp.server.middleware import AuthMiddleware
 
 # 프로젝트 루트 경로 등록
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
@@ -39,13 +47,19 @@ load_dotenv(os.path.join(PROJECT_ROOT, ".env"), override=True)
 
 from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
-from rag.graph.graphrag_tool import run_graphrag_query
-from rag.graph.networkx_graph import multi_hop_search
+from app.utils import init_chat_model
+from rag.graph.graph_explorer import graph_explorer_tools
+from rag.sql import Text2SQL
+from rag.vector.retrieval import HybridRetriever
 
 # ==============================================================================
-# TODO 1. 인증기: 허용된 토큰과 토큰별 권한(스코프) 등록
+# TODO 1. 인증기 및 등급 규칙 정의 (missions/02_missions.md 2단계 참고)
 #   - os.getenv("ENTERPRISE_RAG_MCP_TOKEN")으로 토큰을 읽고, 없으면 sys.exit()로 종료
-#   - StaticTokenVerifier(tokens={토큰: {"client_id": "enterprise-rag-agent", "scopes": ["rag:read"]}})
+#   - ROLE_PROFILES (partner, staff, manager, executive) 정의: role, department, clearance, scopes
+#   - StaticTokenVerifier에 SERVER_TOKEN(서비스 계정) 및 '<SERVER_TOKEN>:<role>' 등록
+#   - CLEARANCE_LEVELS = ["public", "internal", "confidential", "secret"]
+#   - require_clearance(ctx: AuthContext) 사용자 정의 인가 규칙 작성
+#       도구의 class:* 태그 등급 ≤ 토큰 claims의 clearance 이면 True (등급 태그가 없으면 False)
 # ==============================================================================
 verifier = None  # TODO
 
@@ -53,65 +67,70 @@ verifier = None  # TODO
 # ==============================================================================
 # TODO 2. FastMCP 서버 인스턴스 생성
 #   - name="Enterprise-RAG-Server", instructions="...", auth=verifier
-#   - auth를 지정하면 토큰 없는 요청은 401로 차단됩니다.
+#   - middleware=[AuthMiddleware(auth=require_clearance)]
 # ==============================================================================
 mcp = None  # TODO
 
 
 DB_DIR = os.path.join(PROJECT_ROOT, "app/database")
 CHROMA_DIR = os.path.join(DB_DIR, "chroma_db")
+SEMANTIC_LAYER_PATH = os.path.join(PROJECT_ROOT, "data/enterprise_erp_sql/semantic_layer.yaml")
+ERP_DB_PATH = os.path.join(DB_DIR, "enterprise_erp.db")
+
 embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
 
-# 3. 데이터베이스 인스턴스 로드 (제공)
-# 3-1. 사내 규정 Vector DB
+# 3. 데이터베이스 및 검색기 인스턴스 로드 (제공)
+# 3-1. 사내 규정 Vector DB + HybridRetriever
 policy_vstore = Chroma(
     collection_name="enterprise_policy_store",
     embedding_function=embeddings,
-    persist_directory=CHROMA_DIR
+    persist_directory=CHROMA_DIR,
 )
+policy_retriever = HybridRetriever.from_chroma(policy_vstore, window_size=2)
 
-# 3-2. BOK 산업보고서 Vector DB
-bok_vstore = Chroma(
-    collection_name="bok_industry_reports_store",
+# 3-2. AWS Well-Architected 백서 Vector DB + HybridRetriever
+aws_vstore = Chroma(
+    collection_name="aws_waf_guides_store",
     embedding_function=embeddings,
-    persist_directory=CHROMA_DIR
+    persist_directory=CHROMA_DIR,
+)
+aws_retriever = HybridRetriever.from_chroma(aws_vstore, window_size=2)
+
+# 3-3. 사내 ERP Text2SQL 워크플로우
+erp_llm = init_chat_model(model="gemini-3.8-flash", temperature=0.0)
+erp_text2sql = Text2SQL.from_semantic_layer(
+    SEMANTIC_LAYER_PATH,
+    llm=erp_llm,
+    db_path=ERP_DB_PATH if os.path.exists(ERP_DB_PATH) else None,
+    embeddings=embeddings,
 )
 
-# 3-3. NetworkX 지식 그래프 로드
-graph_path = os.path.join(DB_DIR, "knowledge_graph_nodelink.json")
-with open(graph_path, "r", encoding="utf-8") as f:
-    G = nx.node_link_graph(json.load(f))
-
 
 # ==============================================================================
-# TODO 4. Pydantic 입력 스키마 정의
-#   - SearchMethod(str, Enum): GLOBAL="global", LOCAL="local"
-#   - GraphRAGInput: query(str), search_method(SearchMethod, 기본값 GLOBAL)
-#   - GraphRelationInput: seed_entity(str), max_hops(int, 기본값 2, ge=1, le=3)
-#   - 각 Field에는 LLM이 읽을 description을 작성하세요.
+# TODO 4. 입력 스키마: 각 도구의 인자 타입 힌트(Annotated, Field)로 정의합니다 (별도 클래스 없음)
 # ==============================================================================
 
 
 # ==============================================================================
-# TODO 5. FastMCP 도구 등록 (모든 도구에 auth=require_scopes("rag:read") 적용)
-#   - search_company_policy(query: str)            → policy_vstore.similarity_search(query, k=2)
-#   - search_bok_reports(query: str, quarter: 1~4)  → bok_vstore.similarity_search(query, k=3, filter={"quarter": quarter})
-#   - search_graph_relations(params: GraphRelationInput) → multi_hop_search(G, ...)
-#   - query_enterprise_graphrag(params: GraphRAGInput)   → run_graphrag_query(..., root_dir=DB_DIR/graphrag)
-#
-#   도구 인터페이스 설계 체크포인트:
-#   - 결과가 없을 때 "찾지 못했다"는 메시지를 반환하나요?
-#   - 반환 결과에 출처(breadcrumb 등)가 포함되나요?
+# TODO 5. FastMCP 도구 등록: 검색 도구 3종 + 지식 그래프 탐색 도구 5종 (missions/02_missions.md 3단계 참고)
+#   - search_company_policy(query: str)
+#       auth=require_scopes("docs:read"),  tags={"data:docs", "class:internal"}
+#   - search_aws_guides(query: str)
+#       auth=require_scopes("docs:read"),  tags={"data:docs", "class:public"}
+#   - search_enterprise_erp(query: str, context: str = "")   ※ query는 자연어 질문 (SQL 아님)
+#       auth=require_scopes("erp:read"),   tags={"data:erp", "class:confidential"}
+#   - 지식 그래프 탐색 도구 5종: graph_explorer_tools(rag/graph/graph_explorer.py)의 이름·설명·함수를 그대로 등록
+#       auth=require_scopes("graph:read"), tags={"data:graph", "class:confidential"}
 # ==============================================================================
 
 
 if __name__ == "__main__":
     if mcp is None:
-        sys.exit("❌ TODO 1, 2를 먼저 완성하세요. (missions/03_missions.md 2단계)")
+        sys.exit("❌ TODO 1, 2를 먼저 완성하세요. (missions/02_missions.md 2단계)")
 
     parser = argparse.ArgumentParser(description="Enterprise RAG FastMCP Server")
     parser.add_argument("--port", type=int, default=8010, help="서버 포트 (기본값: 8010)")
     args = parser.parse_args()
 
-    print(f"🚀 Enterprise RAG FastMCP 서버 시작 (포트: {args.port}, Bearer 인증 활성화)...")
+    print(f"🚀 Enterprise RAG FastMCP 서버 시작 (포트: {args.port}, Bearer 인증 + 도구별 인가 활성화)...")
     mcp.run(transport="http", host="0.0.0.0", port=args.port)
