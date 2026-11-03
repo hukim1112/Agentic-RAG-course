@@ -1,31 +1,65 @@
 """
 graphrag_tool.py
 ================
-Microsoft GraphRAG CLI/API 연동 및 LangGraph 에이전트 도구 패키징 모듈
-(Google GenAI / gemini-3.7-flash 기반)
+Microsoft GraphRAG 프로젝트 설정 모듈 (워크스페이스 초기화, 인덱스 경로 해석)
+
+GraphRAG 기본 검색(Local / Global)은 검색 엔진 안에서 LLM이 답변까지 작성하므로 느리고,
+답변 생성을 빼면 맥락이 토큰 상한까지 채워져 지나치게 커집니다. 그래서 에이전트에는
+GraphRAG 인덱스 산출물을 단계적으로 조회하는 탐색 도구 5종(rag/graph/graph_explorer.py)을 제공합니다.
+GraphRAG 기본 검색을 직접 실행해 보려면 CLI를 사용합니다.
+
+    graphrag query "질문" --root app/database/graphrag --method local   # 또는 global
+
+인덱스 위치(root_dir)는 configs/graphrag.config에서 조정합니다.
 """
 
+import copy
+import json
+import logging
 import os
-import subprocess
-import yaml
-from typing import Optional, Dict, Any
-from dotenv import load_dotenv
-from langchain_core.tools import tool
+from typing import Any, Dict, Optional
 
-# .env 로드
+import yaml
+from dotenv import load_dotenv
+
+# GraphRAG 및 LiteLLM 내부의 불필요한 경고 로그 억제
+for _logger_name in ("graphrag", "LiteLLM"):
+    logging.getLogger(_logger_name).setLevel(logging.ERROR)
+
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 ENV_PATH = os.path.join(PROJECT_ROOT, ".env")
 if os.path.exists(ENV_PATH):
     load_dotenv(ENV_PATH, override=True)
 
-if os.getenv("GOOGLE_API_KEY") and not os.getenv("GEMINI_API_KEY"):
-    os.environ["GEMINI_API_KEY"] = os.getenv("GOOGLE_API_KEY")
+GRAPHRAG_CONFIG_PATH = os.path.join(PROJECT_ROOT, "configs", "graphrag.config")
+
+# configs/graphrag.config가 없거나 일부 키가 빠졌을 때 쓰는 값
+_DEFAULT_SETTINGS: Dict[str, Any] = {
+    "root_dir": "./app/database/graphrag",
+}
+
+
+def _resolve_root_dir(root_dir: Optional[str] = None) -> str:
+    if root_dir is not None and os.path.exists(root_dir):
+        return os.path.abspath(root_dir)
+    candidate_paths = [
+        os.path.join(PROJECT_ROOT, "app/database/graphrag"),
+        os.path.join(PROJECT_ROOT, "data/graphrag"),
+        "../app/database/graphrag",
+        "../data/graphrag",
+        "./app/database/graphrag",
+        "./data/graphrag",
+    ]
+    for p in candidate_paths:
+        if os.path.exists(p) and os.path.exists(os.path.join(p, "output")):
+            return os.path.abspath(p)
+    return os.path.abspath(candidate_paths[0])
 
 
 def init_graphrag_workspace(
     root_dir: str,
-    llm_model: str = "gemini/gemini-3.7-flash",
-    embedding_model: str = "text-embedding-004"
+    llm_model: str = "gemini-3.7-flash",
+    embedding_model: str = "gemini-embedding-001",
 ) -> str:
     """
     Microsoft GraphRAG 프로젝트 디렉토리를 초기화하고 Google GenAI 호환 settings.yaml을 작성합니다.
@@ -38,47 +72,44 @@ def init_graphrag_workspace(
         "completion_models": {
             "default_completion_model": {
                 "type": "litellm",
+                "model_provider": "gemini",
                 "model": llm_model,
-                "api_key": "${GOOGLE_API_KEY}"
+                "api_key": "${GOOGLE_API_KEY}",
             },
             "default_chat_model": {
                 "type": "litellm",
+                "model_provider": "gemini",
                 "model": llm_model,
-                "api_key": "${GOOGLE_API_KEY}"
-            }
+                "api_key": "${GOOGLE_API_KEY}",
+            },
         },
         "embedding_models": {
             "default_embedding_model": {
                 "type": "litellm",
+                "model_provider": "gemini",
                 "model": embedding_model,
-                "api_key": "${GOOGLE_API_KEY}"
+                "api_key": "${GOOGLE_API_KEY}",
             }
         },
-        "global_search": {
-            "completion_model_id": "default_completion_model"
-        },
+        "global_search": {"completion_model_id": "default_completion_model"},
         "local_search": {
             "completion_model_id": "default_chat_model",
-            "embedding_model_id": "default_embedding_model"
+            "embedding_model_id": "default_embedding_model",
         },
         "vector_store": {
             "default_vector_store": {
                 "type": "lancedb",
                 "db_uri": "output/lancedb",
-                "container_name": "default"
+                "container_name": "default",
             }
         },
         "input": {
-            "type": "file",
             "file_type": "text",
             "base_dir": "input",
             "file_pattern": ".*\\.txt",
-            "file_encoding": "utf-8"
+            "file_encoding": "utf-8",
         },
-        "chunking": {
-            "size": 500,
-            "overlap": 50
-        }
+        "chunking": {"size": 500, "overlap": 50},
     }
 
     settings_path = os.path.join(root_dir, "settings.yaml")
@@ -88,80 +119,15 @@ def init_graphrag_workspace(
     return settings_path
 
 
-def run_graphrag_query(
-    query: str,
-    method: str = "global",
-    root_dir: Optional[str] = None,
-    community_level: int = 2
-) -> str:
-    """
-    GraphRAG CLI를 호출하여 Global, Local 또는 Drift 검색을 실행합니다.
-    app/database/graphrag 경로를 우선 탐색하고, 없으면 data/graphrag를 참조합니다.
-    """
-    if root_dir is None:
-        candidate_paths = [
-            os.path.join(PROJECT_ROOT, "app/database/graphrag"),
-            os.path.join(PROJECT_ROOT, "data/graphrag"),
-            "../app/database/graphrag",
-            "../data/graphrag",
-            "./app/database/graphrag",
-            "./data/graphrag",
-        ]
-        for p in candidate_paths:
-            if os.path.exists(p) and (os.path.exists(os.path.join(p, "output")) or os.path.exists(os.path.join(p, "settings.yaml"))):
-                root_dir = p
-                break
-        if root_dir is None:
-            root_dir = candidate_paths[0]
-
-    abs_root = os.path.abspath(root_dir)
-
-    # 환경 변수 보정
-    env = os.environ.copy()
-    if "GOOGLE_API_KEY" in env:
-        env["GEMINI_API_KEY"] = env["GOOGLE_API_KEY"]
-
-    cmd = [
-        "graphrag", "query",
-        "--root", abs_root,
-        "--method", method
-    ]
-    if method == "global":
-        cmd.extend(["--community-level", str(community_level)])
-    cmd.append(query)
-
-    res = subprocess.run(cmd, capture_output=True, text=True, env=env)
-    if res.returncode != 0:
-        return f"[GraphRAG Query Error]: {res.stderr}\n{res.stdout}"
-    
-    output = res.stdout
-    if "SUCCESS:" in output:
-        output = output.split("SUCCESS:")[-1].strip()
-    if not output.strip():
-        # CLI가 정상 종료했지만 응답이 비어 있으면(LLM 인증 실패 등) 원인을 함께 반환합니다.
-        return f"[GraphRAG Query Error]: 빈 응답이 반환되었습니다.\n{res.stderr[-1500:]}"
-    return output.strip()
-
-
-# ==============================================================================
-# LangGraph 호환 에이전트 도구 정의 (Agentic RAG Tools)
-# ==============================================================================
-
-@tool
-def query_graphrag_global(query: str) -> str:
-    """
-    [GraphRAG Global Search 도구]
-    전사적인 프로젝트 현황, 공통 리스크, 핵심 마일스톤 등 광범위하고 거시적인(Global) 질문에 대해
-    Leiden 커뮤니티 계층 리포트를 Map-Reduce로 종합하여 답변합니다.
-    """
-    return run_graphrag_query(query, method="global")
-
-
-@tool
-def query_graphrag_local(query: str) -> str:
-    """
-    [GraphRAG Local Search 도구]
-    특정 인물, 팀, 개별 프로젝트명, 직급 등 고유명사 중심의 미시적(Local) 질문에 대해
-    주변 지식 서브그래프 및 원본 텍스트 청크를 정밀 결합하여 답변합니다.
-    """
-    return run_graphrag_query(query, method="local")
+def load_graphrag_settings(path: str = GRAPHRAG_CONFIG_PATH) -> Dict[str, Any]:
+    """configs/graphrag.config를 읽어 기본값 위에 덮어쓴 설정을 반환합니다."""
+    settings = copy.deepcopy(_DEFAULT_SETTINGS)
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            user_settings = json.load(f)
+        for key, value in user_settings.items():
+            if isinstance(value, dict) and isinstance(settings.get(key), dict):
+                settings[key].update(value)
+            else:
+                settings[key] = value
+    return settings

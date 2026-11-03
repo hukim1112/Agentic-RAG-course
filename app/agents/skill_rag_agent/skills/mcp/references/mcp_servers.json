@@ -1,0 +1,18 @@
+{
+  "wikipedia": {
+    "name": "Wikipedia-MCP-Server",
+    "transport": "stdio",
+    "url": "npx -y wikipedia-mcp",
+    "description": "위키백과 백과사전 검색 및 문서 읽기 도구 (search, readArticle. 영문 query만 허용)"
+  },
+  "enterprise_rag": {
+    "name": "Enterprise-RAG-Server",
+    "transport": "streamable-http",
+    "url": "http://localhost:8010/mcp",
+    "auth": {
+      "type": "bearer",
+      "token_env": "ENTERPRISE_RAG_MCP_TOKEN"
+    },
+    "description": "사내 규정 검색(search_company_policy), AWS 아키텍처 백서 검색(search_aws_guides), 전사 지식 그래프 탐색(graph_find_entities, graph_neighbors, graph_find_path, graph_search_communities, graph_read), 사내 ERP Text2SQL 조회(search_enterprise_erp) 도구"
+  }
+}

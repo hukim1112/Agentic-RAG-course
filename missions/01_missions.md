@@ -9,8 +9,12 @@ FastAPI 백엔드 서버와 Chainlit 채팅 UI 환경에서 가동하여 **에�
 
 * **에이전트 조립 파일 (TODO 작성 대상)**: `app/agents/tool_rag_agent/agent.py`  
   👉 **이 파일의 `create_agent_executor()`를 완성하세요!**
-* **4대 검색 도구 (제공)**: `app/agents/tool_rag_agent/tools.py` — 노트북 Part 4에서 다룬 사내 규정, 한국은행 보고서, 조직 지식 그래프, GraphRAG 검색 도구
-* **시스템 프롬프트 (제공)**: `app/agents/tool_rag_agent/prompt.py` — ReAct 판단 원칙 및 도구 사용 가이드라인
+* **검색 도구 (제공)**: `app/agents/tool_rag_agent/tools.py`의 `tools_tool_rag` — 노트북 Part 4에서 다룬 4대 데이터 소스용 도구:
+  - `search_company_policy`: 사내 5대 공식 규정집 검색 (Vector + BM25 Hybrid)
+  - `search_aws_guides`: AWS Well-Architected 4대 아키텍처 백서 검색 (Vector + BM25 Hybrid)
+  - `search_enterprise_erp`: 사내 ERP 정형 데이터베이스 조회 (Text2SQL)
+  - 지식 그래프 탐색 도구 5종 (GraphRAG 인덱스): `graph_find_entities`(엔티티 연결), `graph_neighbors`(관계 펼치기), `graph_find_path`(경로 찾기), `graph_search_communities`(커뮤니티 리포트 검색), `graph_read`(원문 확인)
+* **시스템 프롬프트 (제공)**: `app/agents/tool_rag_agent/prompt.py` — ReAct 판단 원칙 및 답변 가이드라인
 * **실행 엔트리포인트 (제공)**:
   - 백엔드 서버: `app/server.py` (FastAPI, 포트 8000)
   - 웹 채팅 UI: `app/chainlit_ui.py` (Chainlit, 포트 8080)
@@ -25,9 +29,9 @@ FastAPI 백엔드 서버와 Chainlit 채팅 UI 환경에서 가동하여 **에�
 2. **[미션 1-2] Tool RAG Agent 완성 (`agent.py`)**:
    - `AsyncSqliteSaver` 기반의 SQLite 영구 세션 메모리를 구축하고, LLM과 4대 검색 도구를 바인딩한 에이전트 팩토리 함수를 구현합니다.
 3. **[미션 1-3] 웹 UI 단계별 시나리오 검증**:
-   - Chainlit UI에서 `tool_rag_agent`를 선택하고, 단일 검색, 멀티홉 그래프 추론, 분기별 비교, 대화 맥락 기억(세션 영속성)을 차례로 검증합니다.
+   - Chainlit UI에서 `tool_rag_agent`를 선택하고, 단일 규정 검색, 멀티홉 그래프+규정 추론, 아키텍처 영역(Pillar)별 비교, ERP 정형 데이터 조회, 대화 맥락 기억(세션 영속성)을 차례로 검증합니다.
 4. **[심화 1-4] 도구 설명(Docstring) 변경 실험**:
-   - 도구 설명문 한 줄이 에이전트의 자율적 판단과 도구 호출 횟수에 미치는 영향을 직접 관찰합니다.
+   - 도구 설명문이 에이전트의 자율적 판단(도구 및 인자 선택)에 미치는 영향을 직접 관찰합니다.
 
 ---
 
@@ -110,7 +114,7 @@ AGENT_METADATA = {
 }
 
 
-async def create_agent_executor():
+async def create_agent_executor(checkpointer=None):
     """Tool RAG Agent 팩토리 함수:
     1. LLM 초기화 (gemini-3.8-flash)
     2. SQLite 기반 비동기 체크포인터 설정 (app/database/checkpoints.db)
@@ -120,13 +124,17 @@ async def create_agent_executor():
     llm = init_chat_model(model="gemini-3.8-flash", temperature=0.0)
 
     # 2. AsyncSqliteSaver 기반 영구 체크포인터 (세션 히스토리 영속화)
-    db_dir = "app/database"
-    os.makedirs(db_dir, exist_ok=True)
-    checkpoints_path = os.path.join(db_dir, "checkpoints.db")
+    conn = None
+    if checkpointer is None:
+        db_dir = "app/database"
+        os.makedirs(db_dir, exist_ok=True)
+        checkpoints_path = os.path.join(db_dir, "checkpoints.db")
 
-    conn = await aiosqlite.connect(checkpoints_path, check_same_thread=False)
-    checkpointer = AsyncSqliteSaver(conn)
-    await checkpointer.setup()
+        conn = await aiosqlite.connect(checkpoints_path, check_same_thread=False)
+        await conn.execute("PRAGMA journal_mode=WAL;")
+        await conn.execute("PRAGMA busy_timeout=5000;")
+        checkpointer = AsyncSqliteSaver(conn)
+        await checkpointer.setup()
 
     # 3. 4대 검색 도구와 ReAct 시스템 프롬프트를 바인딩한 에이전트 생성
     tool_rag_agent = create_agent(
@@ -136,6 +144,7 @@ async def create_agent_executor():
         checkpointer=checkpointer,
         context_schema=AgentContext,
     )
+    tool_rag_agent.checkpointer_conn = conn
     return tool_rag_agent
 ```
 
@@ -149,7 +158,7 @@ async def create_agent_executor():
 
 아래 5가지 시나리오 질문을 차례로 전송하고, Chainlit 메시지 창 상단에 표시되는 **도구 호출 접기/펼치기 박스(Tool Calls)**를 클릭하여 에이전트의 ReAct 추론 과정을 관찰하세요:
 
-#### 🧪 [시나리오 1] 단일 규정 검색 (Dense Semantic Search)
+#### 🧪 [시나리오 1] 단일 규정 검색 (`search_company_policy`)
 - **질문**: `"팀원이 당일 출장을 가면 일비와 식비는 얼마를 받나요?"`
 - **도구 호출 관찰**:
   - `search_company_policy` 1회 호출 (예: `query='당일 출장 일비 식비 팀원 지급 기준'`)
@@ -157,39 +166,41 @@ async def create_agent_executor():
   - 일비: 팀원 기준액 25,000원의 50% → **12,500원**
   - 식비: 당일 출장은 1식 → **12,000원**
 
-#### 🧪 [시나리오 2] 멀티홉 조직도 탐색 + 전결 기준 결합 (Graph + GraphRAG)
-- **질문**: `"클라우드운영팀 김철수 수석의 본부장은 누구이고, 그 본부장의 결재가 필요한 프로젝트 예산 기준은?"`
+#### 🧪 [시나리오 2] 멀티홉 프로젝트 참여자 조회 + 여비 규정 결합 (`search_enterprise_erp` / `graph_*` + `search_company_policy`)
+- **질문**: `"인프라엔지니어링팀에서 P-01 프로젝트에 참여 중인 직원은 누구이고, 그 직원의 직급 기준 부산 1박 2일 출장 시 숙박비 한도와 일비 총액은 얼마인가요?"`
 - **도구 호출 관찰 (Multi-step ReAct Loop)**:
-  1. `search_graph_relations(seed_entity='김철수 수석', max_hops=2)` ➔ 소속 본부(클라우드사업본부) 파악
-  2. `search_graph_relations(seed_entity='클라우드사업본부')` 또는 `query_enterprise_graphrag(search_method='local')` ➔ 본부장과 전결 기준 확인
-  3. (선택) `search_company_policy`도 시도하지만, 예산 전결 기준은 사내 규정이 아니라 **조직 데이터**에 있으므로 그래프/GraphRAG 결과로 답합니다.
+  1. `search_enterprise_erp` 또는 그래프 탐색(`graph_find_entities` → `graph_neighbors`) ➔ `인프라엔지니어링팀`에서 `P-01` 프로젝트에 참여 중인 직원(`강엔지니어 선임`, `최유진 선임`)과 직급(`선임` = 팀원급) 파악
+  2. `search_company_policy` (숙박비 및 일비 기준 검색) ➔ 국내외 출장 및 여비 지급 규정 제14조(숙박비)와 제15조(일비)를 각각 확인
 - **기대 답변 핵심**:
-  - 본부장: **박영희 전무** (클라우드사업본부)
-  - 본부장 승인 대상: **5,000만원 이상 5억원 미만**의 전략 프로젝트 예산 및 계약 (5억원 이상은 대표이사·CFO 승인)
-  - 💡 한 번의 검색으로 끝나지 않고, 앞 결과(소속 본부)를 보고 다음 검색어를 정하는 **멀티홉 추론**이 핵심 관찰 포인트입니다.
+  - 참여 직원: **강엔지니어 선임, 최유진 선임** *(ERP 조회 시 2명 전원 확인 / 지식 그래프 단독 조회 시 핵심 파견 인력인 **강엔지니어 선임** 확인 — 모두 인프라엔지니어링팀 `선임` 직급으로 팀원급 기준 동일)*
+  - 부산 1박 숙박비 한도: 광역시 팀원(수석/책임/선임/전임) 기준 **1박당 80,000원** (제14조)
+  - 1박 2일 일비 총액: 팀원(선임/전임) 1일 25,000원 × 2일 = **50,000원** (제15조)
+  - 💡 사내 규정 문서에는 없는 **프로젝트 참여 직원 및 직급 정보**를 먼저 다른 소스(ERP/Graph)에서 찾고, 그 결과(`선임`)를 바탕으로 여비 규정의 직급별 표(제14조, 제15조)를 조회하는 **멀티홉 추론**이 핵심 관찰 포인트입니다.
 
-#### 🧪 [시나리오 3] 다중 문서 비교 검색 (Iterative Retrieval)
-- **질문**: `"2024년 1분기와 3분기의 반도체 수출 동향을 비교해줘."`
-- **도구 호출 관찰**:
-  - `search_bok_reports(query='반도체 수출 동향', quarter=1)` 호출
-  - `search_bok_reports(query='반도체 수출 동향', quarter=3)` 호출
-  - 👉 분기를 나누어 2번 호출하고, `quarter` 인자로 해당 분기 보고서만 검색함을 확인!
-- **기대 답변 핵심**:
-  - 분기별 반도체 수출 증가율(전년동기대비)을 표 또는 항목별로 비교 (실측 예: 1분기 +50.7%, 3분기 +41.4%)
+#### 🧪 [시나리오 3] 아키텍처 영역별 비교 검색 (`search_aws_guides`) 및 정형 ERP 조회 (`search_enterprise_erp`)
+- **질문 A (AWS 백서 영역 비교)**: `"AWS Well-Architected 백서에서 성능 효율성(Performance Efficiency) 영역과 비용 최적화(Cost Optimization) 영역의 컴퓨팅 리소스 선택 모범 사례를 각각 찾아 비교해줘."`
+  - **도구 호출 관찰**:
+    - `search_aws_guides(query='Performance Efficiency 컴퓨팅 리소스 선택 모범 사례')` 호출
+    - `search_aws_guides(query='Cost Optimization 컴퓨팅 리소스 선택 비용 최적화 모범 사례')` 호출
+    - 👉 아키텍처 영역을 나누어 2번 호출하여 각각의 모범 사례를 검색함을 확인!
+- **질문 B (정형 ERP DB Text2SQL 조회)**: `"사내 ERP에서 AgenticAI팀이 수행하는 프로젝트의 총예산과 현재까지 승인된 지출 합계를 조회해줘."`
+  - **도구 호출 관찰**:
+    - `search_enterprise_erp(query='AgenticAI팀 수행 프로젝트 총예산 및 승인 지출 합계')` 호출
+    - 👉 자연어 질문이 SQL(`SELECT ...`)로 변환되어 실행된 결과 표와 수치를 정확히 답변함을 확인!
 
 #### 🧪 [시나리오 4] 세션 맥락 유지 질의 (Conversational Continuity)
-- **질문 (시나리오 3에 이어서 같은 대화창에서 전송)**: `"그럼 4분기 전망은 어때?"`
+- **질문 (시나리오 3의 질문 A에 이어서 같은 대화창에서 전송)**: `"그럼 신뢰성(Reliability) 영역에서는 어떤 설계 원칙을 강조해?"`
 - **도구 호출 관찰**:
-  - `search_bok_reports(query='반도체 수출 전망 ...', quarter=4)` 호출 (3분기 보고서의 전망 부분을 추가로 조회하기도 합니다)
+  - `search_aws_guides(query='Reliability Pillar Design principles 신뢰성 설계 원칙')` 호출
 - **기대 답변 핵심**:
-  - 사용자가 "반도체"를 생략했지만, 체크포인터에 저장된 직전 대화를 기억하여 **반도체** 4분기 전망을 검색해 답변.
+  - 사용자가 "AWS Well-Architected 백서"를 생략했지만, 체크포인터에 저장된 직전 대화를 기억하여 **AWS 신뢰성(`Reliability`) 백서**의 설계 원칙을 검색해 답변.
 
 #### 🧪 [시나리오 5] 범용 일상 대화 (Zero-Tool Fallback)
 - **질문**: `"안녕! 넌 뭘 할 수 있어?"`
 - **도구 호출 관찰**:
   - 도구 호출 전혀 없음 (Zero Tool Calls)
 - **기대 답변 핵심**:
-  - 불필요한 DB 검색 없이 ReAct 에이전트 시스템 프롬프트에 정의된 자신의 정체성과 수행 가능한 4대 전문 영역을 친절하게 소개.
+  - 불필요한 DB 검색 없이 ReAct 에이전트 시스템 프롬프트와 바인딩된 4대 전문 검색 영역(사내 규정, AWS 아키텍처 가이드, 전사 지식 그래프, 사내 ERP)을 친절하게 소개.
 
 ---
 
@@ -197,22 +208,18 @@ async def create_agent_executor():
 
 프롬프트 엔지니어링만큼 강력한 **도구 설명(Tool Description)의 파급 효과**를 실험합니다.
 
-`app/agents/tool_rag_agent/tools.py` 파일을 열고, `search_bok_reports` 도구의 docstring에서 아래 가이드라인 문장 2줄을 **임시로 삭제**해 보세요. (docstring은 문자열이라 `#` 주석이 적용되지 않으니, 지운 줄은 메모장에 복사해 두세요.)
+`rag/graph/graph_explorer.py` 파일을 열고, `graph_find_entities` 도구의 docstring을 아래처럼 모호한 한 줄로 **임시 변경**해 보세요. 원래 설명에는 "그래프 탐색의 시작점이며, 엔티티 이름이 영문이므로 한국어 이름도 이 도구로 먼저 연결하라"는 지침과 반환 형태(E번호)가 들어 있습니다. (원래 docstring은 메모장에 복사해 두세요.)
 
 ```python
-# tools.py - search_bok_reports 내부
-"""
-한 번의 호출에는 '특정 1개 분기'와 '특정 1개 산업'만 검색하세요.
-분기 비교나 산업 비교가 필요하면 분기별/산업별로 나누어 여러 번 호출하세요.
-"""
+# graph_explorer.py - graph_find_entities 내부 (실험용 임시 변경)
+"""지식 그래프에서 엔티티를 찾습니다."""
 ```
 
 1. 터미널 1의 서버를 재시작합니다.
-2. Chainlit UI에서 다시 시나리오 3번 질문(`"2024년 1분기와 3분기의 반도체 수출 동향을 비교해줘."`)을 전송합니다.
+2. Chainlit UI에서 시나리오 2번 질문 또는 `"AgenticAI팀이 총괄하는 프로젝트의 예산과 승인권자는?"`을 전송합니다.
 3. **결과 비교 관찰**:
-   - 에이전트가 분기를 나누어 2번 호출하나요, 아니면 `"2024년 1분기 3분기 반도체"`라는 하나의 모호한 쿼리로 1번만 대충 검색하고 넘어가나요?
-   - 도구 검색 결과의 정확도와 최종 답변의 수치 일치도는 어떻게 달라졌나요?
-4. **실험 완료 후**: 주석 처리했던 2줄을 반드시 원래대로 복구하고 서버를 재시작하세요.
+   - 도구 설명에 **언제 이 도구를 먼저 써야 하고 무엇을 돌려받는지(E번호)**가 빠져 있을 때, 에이전트가 엔티티 연결부터 시작하나요, 아니면 한국어 이름을 `graph_neighbors`에 바로 넣었다가 후보 목록을 받고 헤매나요? 도구 호출 횟수를 비교해 보세요.
+4. **실험 완료 후**: 삭제했던 docstring을 반드시 원래대로 복구하고 서버를 재시작하세요.
 
 ---
 
@@ -223,7 +230,7 @@ async def create_agent_executor():
 | `Address already in use (:8000 또는 :8080)` | 이전 프로세스가 정상 종료되지 않고 포트를 점유 중 | WSL 터미널에서 `lsof -ti:8000 \| xargs -r kill -9` 또는 포트 번호를 변경하여 실행 (`--port 8001`) |
 | `sqlite3.OperationalError: database is locked` | SQLite DB 파일에 동시 접근 락이 걸림 | `pkill -f "python app/server.py"`로 모든 서버 프로세스를 종료한 후, `rm -f app/database/checkpoints.db*` 실행 후 재시작 |
 | UI 에이전트 목록에 `tool_rag_agent`가 안 뜸 | `agent.py` 코드 문법 오류 또는 팩토리 함수 미노출 | 터미널 1의 콘솔 로그에 출력된 Traceback을 확인하고, `create_agent_executor` 함수명이 오타 없이 작성되었는지 점검 |
-| 도구 호출 결과가 빈 문자열로 나옴 | DB가 아직 빌드되지 않음 | `app/database/chroma_db` 존재 여부 확인 후, Mission 02의 `python app/mcp/build_database.py` 실행 |
+| 도구 호출 결과가 빈 문자열로 나옴 | DB가 아직 빌드되지 않음 | `app/database/chroma_db` 존재 여부 확인 후, `python app/mcp/build_database.py` 실행 |
 
 ---
 
@@ -231,9 +238,9 @@ async def create_agent_executor():
 
 - [ ] `.env` 파일의 필수 API 키 및 시크릿 설정을 확인했다.
 - [ ] FastAPI 백엔드(:8000)와 Chainlit UI(:8080)를 가동하여 `chatbot`과의 기본 통신을 검증했다.
-- [ ] `app/agents/tool_rag_agent/agent.py`에 `AsyncSqliteSaver`와 4대 도구를 바인딩한 `create_agent_executor()`를 완성했다.
+- [ ] `app/agents/tool_rag_agent/agent.py`에 `AsyncSqliteSaver`와 검색 도구(`tools_tool_rag`)를 바인딩한 `create_agent_executor()`를 완성했다.
 - [ ] UI 에이전트 목록에서 `tool_rag_agent`가 정상 로드되고 선택 가능함을 확인했다.
 - [ ] 5가지 테스트 시나리오에서 각 도구의 호출 횟수, 인자, 세션 맥락 기억을 확인했다.
-- [ ] (심화) 도구 설명 변경을 통해 LLM의 도구 호출 판단 변화를 직접 관찰했다.
+- [ ] (심화) 도구 설명 변경을 통해 LLM의 도구 및 인자 선택 판단 변화를 직접 관찰했다.
 
-수고하셨습니다! 이제 여러분은 단순 질의응답 챗봇을 넘어, **상황에 맞춰 사내 4대 전문 데이터베이스를 스스로 판단하고 호출하는 지능형 ReAct RAG 에이전트 서비스**를 완성했습니다. 🚀
+수고하셨습니다! 이제 여러분은 단순 질의응답 챗봇을 넘어, **상황에 맞춰 사내 4대 전문 데이터베이스(규정집, 기술 백서, 지식 그래프, ERP)를 스스로 판단하고 호출하는 지능형 ReAct RAG 에이전트 서비스**를 완성했습니다. 🚀

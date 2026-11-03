@@ -10,7 +10,8 @@ tool_rag_agent와 같은 ReAct 루프를 쓰며, 도구를 연결하는 방식�
   app/agents/skill_rag_agent/
    ├── agent.py      (에이전트 조립 및 팩토리)
    ├── prompt.py     (BASE_SKILL_RAG_SYSTEM_PROMPT 및 스킬 카탈로그 빌더)
-   └── tools.py      (범용 원시 도구 3종)
+   ├── tools.py      (범용 원시 도구 3종)
+   └── skills/       (에이전트 내재화 스킬 — mcp, pdf_processing)
 ===============================================================================
 """
 
@@ -31,18 +32,22 @@ AGENT_METADATA = {
 }
 
 
-async def create_agent_executor():
+async def create_agent_executor(checkpointer=None):
     # 1. LLM 설정
     llm = init_chat_model(model="gemini-3.8-flash", temperature=0.0)
 
     # 2. AsyncSqliteSaver 기반 체크포인터 (SQLite 영구 메모리)
-    db_dir = "app/database"
-    os.makedirs(db_dir, exist_ok=True)
-    checkpoints_path = os.path.join(db_dir, "checkpoints.db")
+    conn = None
+    if checkpointer is None:
+        db_dir = "app/database"
+        os.makedirs(db_dir, exist_ok=True)
+        checkpoints_path = os.path.join(db_dir, "checkpoints.db")
 
-    conn = await aiosqlite.connect(checkpoints_path, check_same_thread=False)
-    checkpointer = AsyncSqliteSaver(conn)
-    await checkpointer.setup()
+        conn = await aiosqlite.connect(checkpoints_path, check_same_thread=False)
+        await conn.execute("PRAGMA journal_mode=WAL;")
+        await conn.execute("PRAGMA busy_timeout=5000;")
+        checkpointer = AsyncSqliteSaver(conn)
+        await checkpointer.setup()
 
     # 3. 미들웨어 구성 (SkillCatalogMiddleware: 스킬 카탈로그 동적 주입)
     middleware = [SkillCatalogMiddleware(get_skill_prompt_builder())]
@@ -56,4 +61,5 @@ async def create_agent_executor():
         checkpointer=checkpointer,
         context_schema=AgentContext,
     )
+    skill_rag_agent.checkpointer_conn = conn
     return skill_rag_agent

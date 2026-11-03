@@ -1,6 +1,6 @@
 # 🏢 기업 데이터 연동을 위한 에이전틱 RAG 아키텍처 구축 실무
 
-> 사내 규정(Markdown), 산업 보고서(PDF), 조직 정보(그래프)를 연동하는 **Agentic RAG 시스템**을 하루 동안 단계별로 만들어 보는 핸즈온 과정
+> 사내 규정(Markdown), 클라우드 아키텍처 백서(PDF), 전사 조직·프로젝트(지식 그래프), 사내 ERP(SQLite)를 연동하는 **Agentic RAG 시스템**을 하루 동안 단계별로 만들어 보는 핸즈온 과정
 
 에이전트 루프는 `create_agent` 한 줄로 만들어집니다. 이 과정은 그 바깥, 즉 **에이전트가 쓰는 도구와 데이터 계층**을 설계하고 평가하는 데 집중합니다.
 
@@ -12,8 +12,8 @@
 | :--- | :--- | :--- |
 | **용도** | 노트북 학습 후 미션을 직접 수행 | 모든 미션이 완성된 정답본 |
 | **Mission 01** `app/agents/tool_rag_agent/agent.py` | `create_agent_executor()`가 `TODO` | 완성 |
-| **Mission 03** `app/mcp/enterprise_rag_server.py` | 인증기 · 서버 · 스키마 · 도구 4종이 `TODO` | 완성 |
-| **Mission 03** `skills/mcp/references/mcp_servers.json` | `wikipedia`만 등록 | `wikipedia` + `enterprise_rag` 등록 |
+| **Mission 02** `app/mcp/enterprise_rag_server.py` | 인증기 · 2층 인가 · 서버 · 도구(검색 3종 + 그래프 탐색 5종)가 `TODO` | 완성 |
+| **Mission 03** `app/agents/skill_rag_agent/skills/mcp/references/mcp_servers.json` | `wikipedia`만 등록 | `wikipedia` + `enterprise_rag` 등록 |
 | **그 외** (노트북, 미션 문서, DB, 공용 모듈) | 동일 | 동일 |
 
 > 💡 미션 중 막히면 `instructor` 브랜치의 같은 파일과 비교해 보세요: `git diff main origin/instructor -- <파일 경로>`
@@ -68,9 +68,9 @@ LANGCHAIN_PROJECT=agentic-rag
 | 교시 | 노트북 | 미션 | 만드는 것 |
 | :---: | :--- | :--- | :--- |
 | 1 | `1_Agentic_RAG.ipynb` | [`01_missions.md`](missions/01_missions.md) | Naive RAG vs ReAct 검색 에이전트, `tool_rag_agent` 조립 및 UI 검증 |
-| 2 | `2_Indexing.ipynb` | [`02_missions.md`](missions/02_missions.md) | 문서 형식과 무관한 인덱싱 파이프라인, 지식 그래프, GraphRAG, 신규 문서 무수정 확장 |
-| 3 | `3_MCP_and_Skills.ipynb` | [`03_missions.md`](missions/03_missions.md) | Bearer 인증 MCP 서버, Skills 기반 `skill_rag_agent` |
-| 4 | `4_Evaluation.ipynb` | - | 평가 하네스로 진단 → 개선 → 회귀 확인, HITL 승인 게이트 |
+| 2 | `2_Indexing.ipynb` | - *(노트북 Part 9 내장)* | 문서 형식과 무관한 인덱싱 파이프라인(`chunk_overlap=0`, `window_size=2`), Text2SQL 시맨틱 레이어, 지식 그래프 & GraphRAG 탐색 도구 5종, 신규 문서 무수정 확장(`--extra-docs`) |
+| 3 | `3_MCP_and_Skills.ipynb` | [`02_missions.md`](missions/02_missions.md)<br>[`03_missions.md`](missions/03_missions.md) | **Mission 02**: Bearer 인증 · 2층 인가(Scope + Clearance) FastMCP 서버 구축 및 기동 (`enterprise_rag_server.py`)<br>**Mission 03**: CLI 보안 검증, `mcp_servers.json` 등록 및 `skill_rag_agent` vs `tool_rag_agent` 비교 |
+| 4 | `4_Evaluation.ipynb` | - | 3계층(Retrieval · Groundedness · Answer) 평가 하네스로 진단 → 개선 → 회귀 확인 및 실시간 미들웨어 연동 |
 
 `notebooks/0_Template.ipynb`는 노트북 공통 환경 설정(루트 경로, `.env`, `nest_asyncio`) 템플릿입니다.
 미션에서 직접 작성하는 파일은 위 [브랜치 안내](#-브랜치-안내) 표를 참고하세요.
@@ -86,7 +86,7 @@ python app/server.py
 # 터미널 2: Chainlit 웹 UI (8080) → 로그인 user / 1234
 chainlit run app/chainlit_ui.py --port 8080
 
-# 터미널 3: Enterprise RAG MCP 서버 (8010, skill_rag_agent용 · Mission 03 완료 후)
+# 터미널 3: Enterprise RAG MCP 서버 (8010, skill_rag_agent용 · Mission 02 완료 후)
 python app/mcp/enterprise_rag_server.py
 ```
 
@@ -111,7 +111,7 @@ python -m app.eval.rag_eval --agent tool_rag_agent --compare artifacts/eval_runs
 | 에이전트 | 도구 | 데이터 접근 방식 |
 | :--- | :--- | :--- |
 | `chatbot` | 범용 도구 + 사용자 기억 | 서버/UI 통신 확인용 |
-| `tool_rag_agent` | 검색 도구 4종을 `@tool`로 직접 바인딩 | 에이전트 프로세스가 DB를 직접 조회 |
+| `tool_rag_agent` | 검색 도구 3종 + 그래프 탐색 도구 5종을 `@tool`로 직접 바인딩 | 에이전트 프로세스가 DB를 직접 조회 |
 | `skill_rag_agent` | 범용 도구 3종 (`glob_search`, `file_read`, `bash_command`) | `SKILL.md` → `mcp_servers.json` → MCP CLI로 점진적 탐색 |
 
 두 RAG 에이전트는 같은 ReAct 루프와 같은 검색 로직을 쓰고, **도구를 연결하는 방식만** 다릅니다.
@@ -120,20 +120,20 @@ python -m app.eval.rag_eval --agent tool_rag_agent --compare artifacts/eval_runs
 
 ## 🗄️ 데이터베이스 (`app/database/`)
 
-| 데이터 | 원천 | 인덱스 | 검색 도구 |
+| 데이터 | 원천 | 인덱스 / DB | 검색 도구 |
 | :--- | :--- | :--- | :--- |
-| 사내 규정 | `data/policies/*.md` | Chroma `enterprise_policy_store` (24청크) | `search_company_policy` |
-| 한국은행 보고서 | `data/bok_major_industry_reports/*.pdf` | Chroma `bok_industry_reports_store` (분기 메타데이터 포함) | `search_bok_reports` |
-| 조직/프로젝트 관계 | `data/graph/org_relationships.txt` | NetworkX `knowledge_graph_nodelink.json` | `search_graph_relations` |
-| 전사 거시 분석 | 같은 원천 | Microsoft GraphRAG `graphrag/` | `query_enterprise_graphrag` |
+| 사내 규정 | `data/policies/*.md` | Chroma `enterprise_policy_store` (239청크) | `search_company_policy` |
+| AWS 아키텍처 백서 | `data/tech_pdfs/aws_waf_series/*.pdf` | Chroma `aws_waf_guides_store` (4,641청크, `pillar` 메타데이터) | `search_aws_guides` |
+| 전사 조직·프로젝트·인프라 | `data/graphrag/` & `data/graph/` | Microsoft GraphRAG `graphrag/` & NetworkX `enterprise_graph.json` | `graph_find_entities` · `graph_neighbors` · `graph_find_path` · `graph_search_communities` · `graph_read` |
+| 사내 ERP 정형 데이터 | `data/enterprise_erp_sql/` | SQLite `enterprise_erp.db` + `semantic_layer.yaml` | `search_enterprise_erp` |
 
 **사전 구축된 DB가 함께 배포되므로 다시 빌드할 필요가 없습니다.** 빌드 옵션은 `python app/mcp/build_database.py --help`를 참고하세요.
 
 ```bash
-# 신규 문서를 사내 규정에 추가 인덱싱 (24 → 30청크)
+# 신규 문서를 사내 규정에 추가 인덱싱 (239 → 274청크)
 python app/mcp/build_database.py --targets policy --extra-docs data/new_documents
 
-# 사내 규정만 원래 상태로 되돌리기 (24청크)
+# 사내 규정만 원래 상태로 되돌리기 (239청크)
 python app/mcp/build_database.py --targets policy
 
 # 사전 구축본 전체로 되돌리기
@@ -142,7 +142,7 @@ git checkout -- app/database
 
 ---
 
-## 🔌 MCP 서버 레지스트리 (`skills/mcp/references/mcp_servers.json`)
+## 🔌 MCP 서버 레지스트리 (`app/agents/skill_rag_agent/skills/mcp/references/mcp_servers.json`)
 
 | 서버 | 전송 방식 | 접속 정보 | 비고 |
 | :--- | :--- | :--- | :--- |
@@ -150,8 +150,8 @@ git checkout -- app/database
 | `enterprise_rag` | streamable-http | `http://localhost:8010/mcp` | Mission 03에서 등록 · Bearer 인증 |
 
 ```bash
-python skills/mcp/scripts/list_tools.py --url "npx -y wikipedia-mcp"
-python skills/mcp/scripts/list_tools.py --url http://localhost:8010/mcp --token-env ENTERPRISE_RAG_MCP_TOKEN
+python app/agents/skill_rag_agent/skills/mcp/scripts/list_tools.py --url "npx -y wikipedia-mcp"
+python app/agents/skill_rag_agent/skills/mcp/scripts/list_tools.py --url http://localhost:8010/mcp --token-env ENTERPRISE_RAG_MCP_TOKEN
 ```
 
 ### 🔐 인증
@@ -168,7 +168,7 @@ python skills/mcp/scripts/list_tools.py --url http://localhost:8010/mcp --token-
 │   ├── agents/
 │   │   ├── chatbot.py
 │   │   ├── tool_rag_agent/      # agent.py, prompt.py, tools.py
-│   │   └── skill_rag_agent/     # agent.py, prompt.py, tools.py
+│   │   └── skill_rag_agent/     # agent.py, prompt.py, tools.py, skills/ (mcp, pdf_processing)
 │   ├── mcp/
 │   │   ├── enterprise_rag_server.py   # Bearer 인증 FastMCP 서버
 │   │   ├── build_database.py          # 인덱싱 파이프라인으로 DB 빌드
@@ -180,8 +180,7 @@ python skills/mcp/scripts/list_tools.py --url http://localhost:8010/mcp --token-
 │   ├── database/                # 사전 구축된 4대 DB
 │   ├── server.py                # FastAPI 에이전트 서버
 │   └── chainlit_ui.py           # Chainlit 웹 UI
-├── rag/                         # 공용 RAG 모듈: preprocessing · indexing · retrieval · graph
-├── skills/mcp/                  # MCP CLI 스킬 (SKILL.md, references/mcp_servers.json, scripts/)
+├── rag/                         # 공용 RAG 모듈: vector (preprocessing · indexing · retrieval) · sql · graph
 ├── data/                        # 원천 문서, 골든 평가셋, 미션용 새 문서
 ├── notebooks/                   # 교시별 실습 노트북
 ├── missions/                    # 교시별 미션 가이드

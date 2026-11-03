@@ -1,237 +1,254 @@
-# 🎯 Mission 02: 엔터프라이즈 4대 데이터베이스 검증 및 제로 코드 확장
+# 🎯 Mission 02: 인증·인가된 Enterprise RAG FastMCP 서버 구축 및 기동
 
-본 미션은 `notebooks/2_Indexing.ipynb`에서 학습한 비정형 문서 전처리 및 인덱싱 파이프라인을 바탕으로,  
-프로젝트에 이미 완벽하게 구축되어 배포된 **4대 엔터프라이즈 데이터베이스(`app/database/`)의 검색 기능을 먼저 검증**하고,  
-이후 새로운 사내 규정 문서가 유입되었을 때 **파이프라인 코드 수정 없이 즉시 인덱싱 및 검색되는 제로 코드 확장(Zero-Code Dynamic Ingestion)과 롤백**을 실습하는 과제입니다.
+본 미션은 `notebooks/3_MCP_and_Skills.ipynb`의 Part 1\~3에서 학습한 **FastMCP 프레임워크와 2층 인가(Authorization) 아키텍처**를 바탕으로,  
+사내 4대 데이터베이스(규정집, AWS 아키텍처 백서, 사내 ERP, 전사 지식 그래프)를 **Bearer 토큰 인증과 역할·등급별 접근 제어가 적용된 독립 마이크로서비스 서버(`app/mcp/enterprise_rag_server.py`)**로 직접 구현하고 기동하는 실습 과제입니다.
 
 ---
 
 ## 📂 실습 대상 및 핵심 파일
 
-* **사전 구축된 4대 DB 저장소 (배포 제공)**: `app/database/`
-  - `chroma_db/`: 사내 규정(`enterprise_policy_store`) 및 BOK 보고서(`bok_industry_reports_store`)
-  - `knowledge_graph_nodelink.json`: 조직도 2-Hop 지식 그래프
-  - `graphrag/`: Microsoft GraphRAG 전사 프로젝트 분석 산출물
-* **4대 DB 검색 검증 스크립트**: `app/mcp/test_database.py` — 4개 DB의 실제 검색 쿼리 및 반환 결과 검수 도구
-* **DB 통합 빌드 스크립트**: `app/mcp/build_database.py` — 노트북의 `index_documents()` 및 트리플렛 추출 로직이 집약된 배치 스크립트
-* **신규 사내 규정 문서**: `data/new_documents/2026_복리후생지원규정.md`
-* **사전 학습 노트북**: `notebooks/2_Indexing.ipynb`
+* **MCP 서버 구현 파일 (TODO 작성 대상)**: `app/mcp/enterprise_rag_server.py`  
+  👉 **이 파일의 `TODO 1, 2`(인증·인가 프로바이더 및 서버 생성)와 `TODO 4, 5`(4대 DB 도구 등록)를 완성하세요!**
+* **사전 구축된 4대 데이터베이스 (제공)**: `app/database/`
+  - `chroma_db/`: 사내 규정(`enterprise_policy_store`, 239청크) 및 AWS Well-Architected 백서(`aws_waf_guides_store`, 4,641청크)
+  - `enterprise_erp.db`: 사내 ERP 정형 데이터베이스 (SQLite, 6개 테이블 — `Text2SQL` 연동)
+  - `graphrag/`: Microsoft GraphRAG 전사 지식 그래프 인덱스 (`rag/graph/graph_explorer.py`의 탐색 도구 5종 연동)
+* **연계 학습 노트북**: `notebooks/3_MCP_and_Skills.ipynb`
 
 ---
 
 ## 📋 미션 목표
 
-1. **[미션 2-1] 4대 DB 아키텍처 및 사전 구축 현황 파악**:
-   - 교육생의 빠른 실습과 API 비용 절감을 위해 `app/database/`에 이미 구축·배포된 4대 DB의 파이프라인 구조를 분석합니다.
-2. **[미션 2-2] 4대 DB 통합 검색 검증 (디딤돌 실습)**:
-   - `test_database.py`를 실행하여 4대 데이터베이스가 각각 질문 의도에 부합하는 정밀한 조항, 수치, 관계망을 반환하는지 즉시 확인합니다.
-3. **[미션 2-3] 배치 빌드 파이프라인 코드 분석**:
-   - `build_database.py`가 비정형 문서들을 공통 함수(`index_documents()`)로 어떻게 규격화하여 색인하는지 파악합니다.
-4. **[미션 2-4] 신규 규정 제로 코드 확장 및 롤백**:
-   - `2026_복리후생지원규정.md` 문서를 코드 수정 없이 추가 인덱싱하여 청크 수가 **24개 ➔ 30개**로 확장되는 과정을 확인하고, 언제든 초기 상태로 원상 복구(롤백)하는 법을 익힙니다.
+1. **[미션 2-1] 인증 토큰(`.env`) 점검 및 생성**:
+   - 사내 MCP 서버 전용 Bearer 토큰(`ENTERPRISE_RAG_MCP_TOKEN`)이 환경 변수에 설정되어 있는지 확인합니다.
+2. **[미션 2-2] FastMCP 토큰 인증기 및 2층 인가 미들웨어 구축 (`TODO 1, 2`)**:
+   - `StaticTokenVerifier`에 에이전트 서비스 계정 토큰과 역할별 테스트 토큰(`:partner`, `:staff`, `:manager`, `:executive`)을 등록하고, 데이터 등급 규칙 `require_clearance`를 서버 전역 `AuthMiddleware`로 연결합니다.
+3. **[미션 2-3] 4대 데이터베이스 MCP 도구 노출 (`TODO 4, 5`)**:
+   - 검색 도구 3종(`search_company_policy`, `search_aws_guides`, `search_enterprise_erp`)과 지식 그래프 탐색 도구 5종(`graph_*`)을 도메인 scope(`require_scopes("<도메인>:read")`)와 데이터 등급 태그(`tags={"data:*", "class:*"}`)와 함께 등록합니다.
+4. **[미션 2-4] MCP 서버 기동 및 노트북 Part 3\~5 연동 확인**:
+   - 포트 `8010`에 서버를 띄우고, `notebooks/3_MCP_and_Skills.ipynb`의 역할별 도구 가시성 테스트(Part 3)와 에이전트 연결 실습(Part 4\~5)을 내가 만든 서버로 실행합니다.
+
+---
+
+## 🧭 전체 진행 흐름 (노트북 3과 함께 진행)
+
+| 순서 | 단계 | 수행 위치 |
+| :---: | :--- | :--- |
+| ① | **Part 1\~2 & Part 3(이론)**: MCP 개념, FastMCP 스키마 검증, 인증/인가 2층 구조 이해 | `notebooks/3_MCP_and_Skills.ipynb` |
+| ② | **🎯 Mission 02 (현재 문서)**: 토큰 확인 → `enterprise_rag_server.py` TODO 완성 → 서버 기동 | **이 문서 1\~4단계** |
+| ③ | **Part 3(실습)\~Part 6.1**: 역할별 가시성 검증, 정적 바인딩, Search & Proxy, Skills 개념 | `notebooks/3_MCP_and_Skills.ipynb` |
+| ④ | **🎯 Mission 03**: CLI 보안 검증 → `mcp_servers.json` 등록 → Chainlit에서 `skill_rag_agent` 비교 | `missions/03_missions.md` |
 
 ---
 
 ## 🛠️ 단계별 수행 가이드
 
-### 1단계: 4대 DB 아키텍처 및 사전 구축 현황 파악 (미션 2-1)
+### 1단계: 인증 토큰 (.env) 확인 및 생성 (미션 2-1)
 
-> 💡 **[안내] 4대 DB는 이미 완벽하게 사전 구축(Pre-built)되어 있습니다!**  
-> 대형 PDF 154페이지 정규화나 Microsoft GraphRAG의 Leiden 커뮤니티 요약 인덱싱은 수십 분의 시간과 많은 API 비용이 소요됩니다.  
-> 따라서 본 실습 환경의 `app/database/`에는 실무 수준으로 정제된 **4대 데이터베이스가 이미 사전 빌드되어 리포지토리에 포함**되어 있습니다.
+터미널(WSL 환경)에서 사내 MCP 서버 전용 Bearer 토큰이 `.env`에 설정되어 있는지 확인합니다:
 
+```bash
+# 토큰 환경변수 등록 여부 확인 (값은 마스킹되어 변수명만 출력됨)
+grep -E '^ENTERPRISE_RAG_MCP_TOKEN=' .env | cut -d= -f1
+```
+
+> 💡 **`ENTERPRISE_RAG_MCP_TOKEN`이 출력되지 않는 경우**: 아래 명령어를 실행하여 32바이트 난수 토큰을 생성해 `.env`에 추가하세요:
+> ```bash
+> echo "ENTERPRISE_RAG_MCP_TOKEN=$(python -c 'import secrets; print(secrets.token_urlsafe(32))')" >> .env
+> ```
+
+---
+
+### 2단계: FastMCP 인증기 및 서버 인스턴스 생성 (미션 2-2)
+
+`app/mcp/enterprise_rag_server.py` 파일을 열고, **TODO 1과 TODO 2**를 완성합니다.
+
+> 📌 **시작 상태 확인**:  
+> 파일 상단에는 `FastMCP`, `AuthContext`, `require_scopes`, `StaticTokenVerifier`, `AuthMiddleware` 등의 import 문이 이미 준비되어 있고, 중간(3번 섹션)에는 DB 및 검색기 로딩 코드가 작성되어 있습니다.  
+> 파일의 **`TODO 1` ~ `TODO 2` 구간(`verifier = None  # TODO` 및 `mcp = None  # TODO`)을 아래 코드로 교체**하세요.  
+> *(TODO 2를 완성하기 전에 서버를 실행하면 `❌ TODO 1, 2를 먼저 완성하세요.` 메시지와 함께 종료됩니다.)*
+
+```python
+# app/mcp/enterprise_rag_server.py (TODO 1 & 2 교체 코드)
+
+# 1. 인증기: 토큰마다 '무엇을 할 수 있나(scopes)'와 '누구인가(role, department, clearance)'를 등록
+SERVER_TOKEN = os.getenv("ENTERPRISE_RAG_MCP_TOKEN")
+if not SERVER_TOKEN:
+    sys.exit("❌ .env에 ENTERPRISE_RAG_MCP_TOKEN이 없습니다. 토큰을 설정한 뒤 다시 실행하세요.")
+
+# 역할별 권한 프로필. 운영 환경에서는 IdP가 사용자마다 JWT를 발급하고, 같은 정보가 JWT claim으로 들어옵니다.
+#   - scopes:    도메인 접근권 (<도메인>:<동작>)
+#   - clearance: 열람 가능한 최고 데이터 등급 (정보보안관리지침의 4등급)
+ROLE_PROFILES = {
+    "partner":   {"client_id": "user-partner",   "role": "partner",   "department": "외부협력사",
+                  "clearance": "public",       "scopes": ["docs:read"]},
+    "staff":     {"client_id": "user-staff",     "role": "staff",     "department": "AgenticAI팀",
+                  "clearance": "internal",     "scopes": ["docs:read"]},
+    "manager":   {"client_id": "user-manager",   "role": "manager",   "department": "경영기획팀",
+                  "clearance": "confidential", "scopes": ["docs:read", "erp:read"]},
+    "executive": {"client_id": "user-executive", "role": "executive", "department": "AI혁신본부",
+                  "clearance": "secret",       "scopes": ["docs:read", "erp:read", "graph:read"]},
+}
+
+# 개발용 StaticTokenVerifier: 등록한 dict 전체가 토큰의 claims가 됩니다.
+#   - 기본 토큰: 에이전트 서비스 계정 (모든 도구 사용)
+#   - '<기본 토큰>:<역할>': 역할별 테스트 토큰
+verifier = StaticTokenVerifier(
+    tokens={
+        SERVER_TOKEN: {"client_id": "enterprise-rag-agent", "role": "service", "department": "AI혁신본부",
+                       "clearance": "confidential", "scopes": ["docs:read", "erp:read", "graph:read"]},
+        **{f"{SERVER_TOKEN}:{name}": profile for name, profile in ROLE_PROFILES.items()},
+    }
+)
+
+# 데이터 등급 (낮음 → 높음). 정보보안관리지침의 공개 · 사내한 · 대외비 · 극비
+CLEARANCE_LEVELS = ["public", "internal", "confidential", "secret"]
+
+
+# 사용자 정의 인가 규칙: AuthContext(검증된 토큰 + 접근하려는 도구)를 받아 허용 여부를 반환
+def require_clearance(ctx: AuthContext) -> bool:
+    """도구의 데이터 등급(class:* 태그)이 사용자의 열람 등급(clearance claim) 이하일 때만 통과합니다."""
+    if ctx.token is None:
+        return False
+    tool_class = next((tag.split(":", 1)[1] for tag in ctx.component.tags if tag.startswith("class:")), None)
+    if tool_class not in CLEARANCE_LEVELS:   # 등급이 없거나 모르는 등급의 도구는 막습니다 (fail-closed)
+        return False
+    user_clearance = ctx.token.claims.get("clearance", "public")
+    return CLEARANCE_LEVELS.index(tool_class) <= CLEARANCE_LEVELS.index(user_clearance)
+
+
+# 2. FastMCP 서버 인스턴스 생성
+#    - auth: 토큰 없는 요청은 401로 차단
+#    - AuthMiddleware: 모든 도구에 등급 규칙(require_clearance)을 적용하는 서버 전역 정책
+mcp = FastMCP(
+    name="Enterprise-RAG-Server",
+    instructions="사내 규정집, AWS 아키텍처 백서, 전사 지식 그래프(GraphRAG) 및 사내 ERP(Text2SQL)를 제공하는 통합 RAG 서버",
+    auth=verifier,
+    middleware=[AuthMiddleware(auth=require_clearance)],
+)
+```
+
+---
+
+### 3단계: 4대 데이터베이스 MCP 도구 구현 (미션 2-3)
+
+이어서 `app/mcp/enterprise_rag_server.py` 하단의 **TODO 4(스키마 정의)와 TODO 5(검색 도구 3종 + 그래프 탐색 도구 5종)**를 완성합니다.
+
+> 📌 **붙여넣을 위치**: 아래 코드 블록 전체를 `TODO 4` · `TODO 5` 주석 아래, **`if __name__ == "__main__":` 줄 바로 위**에 붙여넣으세요.  
+> `@mcp.tool` 데코레이터는 2단계에서 만든 `mcp` 인스턴스를 사용하므로 반드시 2단계를 먼저 작성해야 합니다.
+
+각 도구에는 **두 층의 인가**가 적용됩니다:
+- **1층 (도메인 접근권)**: 각 도구의 `auth=require_scopes("<도메인>:read")`가 토큰의 `scopes`를 검사합니다.
+- **2층 (데이터 보안 등급)**: 각 도구의 `tags={"class:<등급>"}`을 서버 전역 미들웨어(`require_clearance`)가 읽어 토큰의 `clearance` 등급과 비교합니다.
+
+| 도구 | 부여할 `tags` | 요구할 `scope` | 접근 가능한 역할 (`partner` / `staff` / `manager` / `executive`) |
+| :--- | :--- | :--- | :--- |
+| `search_aws_guides` | `data:docs`, `class:public` | `docs:read` | 전원 (`partner`, `staff`, `manager`, `executive`) |
+| `search_company_policy` | `data:docs`, `class:internal` | `docs:read` | 사내 직원 이상 (`staff`, `manager`, `executive`) |
+| `search_enterprise_erp` | `data:erp`, `class:confidential` | `erp:read` | 팀장 이상 (`manager`, `executive`) |
+| `graph_*` 탐색 도구 5종 | `data:graph`, `class:confidential` | `graph:read` | 임원 (`executive`) 및 에이전트 서비스 계정 |
+
+지식 그래프 도구 5종(`graph_find_entities`, `graph_neighbors`, `graph_find_path`, `graph_search_communities`, `graph_read`)은 `rag/graph/graph_explorer.py`에 LangChain 도구로 이미 정의되어 있으므로, 중복 작성 없이 **이름·설명·함수를 그대로 꺼내 `mcp.tool()`에 등록**합니다:
+
+```python
+# app/mcp/enterprise_rag_server.py (TODO 4 & 5 작성 코드)
+
+# 4. 입력 스키마: 각 도구의 인자 타입 힌트(Annotated, Field)로 정의하며 FastMCP가 Pydantic으로 검증합니다.
+
+# 5. FastMCP 도구 등록
+#    - auth:  1층 scope (이 도메인에 접근할 수 있는가)
+#    - tags:  data:* 는 데이터 도메인, class:* 는 데이터 등급 (2층 등급 규칙이 읽음)
+#    권한이 없으면 도구 목록에서 숨겨지고 호출도 거부됩니다.
+# 5-1. 사내 규정: 사내한(internal) 등급
+@mcp.tool(
+    name="search_company_policy",
+    description=(
+        "사내 5대 공식 규정 문서(국내여비교통비지급규정, 인사복무규정, 정보보안관리지침, 전사위임전결및예산집행규정, 클라우드및GPU인프라운영지침)에서 "
+        "출장비 기준, 인사·징계 양정, 보안 반출 절차, 금액별 전결 기준, GPU 유휴 회수 규정 등 사내 제도·원칙 조항을 검색합니다.\n\n"
+        "반환 형태: 검색된 조항의 앞뒤 문맥이 결합된 본문과 함께 상단에 [문서 전체 목차(TOC)] 및 [현재 위치 경로(Breadcrumb)]가 포함된 텍스트를 반환합니다."
+    ),
+    auth=require_scopes("docs:read"),
+    tags={"data:docs", "class:internal"},
+)
+def search_company_policy(query: str) -> str:
+    docs = policy_retriever.search(query, top_k=2)
+    if not docs:
+        return f"'{query}' 관련 사내 규정을 찾지 못했습니다."
+    return "\n\n".join([f"[{d.metadata.get('breadcrumb', '사내규정')}]:\n{d.page_content}" for d in docs])
+
+
+# 5-2. AWS 백서: 공개(public) 등급
+@mcp.tool(
+    name="search_aws_guides",
+    description=(
+        "AWS Well-Architected Framework 4대 아키텍처 백서(Security, Reliability, Performance Efficiency, Cost Optimization)에서 "
+        "클라우드 설계 원칙, 모범 사례(Best Practice), 흔한 안티패턴(Common anti-patterns), 구현 지침을 검색합니다.\n\n"
+        "반환 형태: 검색된 모범 사례의 앞뒤 문맥이 결합된 본문과 함께 상단에 [문서 전체 목차(TOC)] 및 [현재 위치 경로(Breadcrumb)]가 포함된 텍스트를 반환합니다."
+    ),
+    auth=require_scopes("docs:read"),
+    tags={"data:docs", "class:public"},
+)
+def search_aws_guides(query: str) -> str:
+    docs = aws_retriever.search(query, top_k=2)
+    if not docs:
+        return f"'{query}' 관련 AWS 아키텍처 백서를 찾지 못했습니다."
+    return "\n\n".join([f"[{d.metadata.get('breadcrumb', 'AWS 백서')}]:\n{d.page_content}" for d in docs])
+
+
+# 5-3. 사내 ERP: 대외비(confidential) 등급 (프로젝트 상세 예산 · 인사 데이터)
+@mcp.tool(
+    name="search_enterprise_erp",
+    description=(
+        "사내 ERP 정형 데이터베이스(부서 마스터, 임직원 명부, 전략 프로젝트 및 투입 인력, 프로젝트 지출 결의 전표, "
+        "GPU 클러스터 할당·가동률 대장, 부서별·비목별 운영 예산 원장)에서 실시간 수치와 현황 레코드를 조회합니다.\n"
+        "query에는 SQL 문이 아니라 자연어 질문을 넣으세요. SQL은 이 도구가 스키마를 보고 직접 생성합니다.\n\n"
+        "반환 형태: 자연어 질의를 변환해 실행한 SELECT SQL 쿼리문, 적용한 해석 가정, 조회된 결과 마크다운 표(컬럼명 및 행 데이터)를 반환합니다."
+    ),
+    auth=require_scopes("erp:read"),
+    tags={"data:erp", "class:confidential"},
+)
+def search_enterprise_erp(
+    query: Annotated[str, Field(description="조회하려는 내용을 담은 자연어 질문 (SQL 문 아님). 예: 'AgenticAI팀 프로젝트별 승인 예산'")],
+    context: Annotated[str, Field(description="사내 규정 등에서 먼저 확인한 참고 기준값 (선택)")] = "",
+) -> str:
+    return erp_text2sql.invoke(query, context=context).to_text()
+
+
+# 5-4. 지식 그래프 탐색 도구 5종: 대외비(confidential) 등급 (결재선 · 프로젝트 예산 · 리스크)
+#      LangChain 도구의 이름·설명·함수를 그대로 등록해 tool_rag_agent와 정의를 공유합니다.
+for graph_tool in graph_explorer_tools:
+    mcp.tool(
+        name=graph_tool.name,
+        description=graph_tool.description,
+        auth=require_scopes("graph:read"),
+        tags={"data:graph", "class:confidential"},
+    )(graph_tool.func)
+```
+
+> 💡 `@mcp.tool(...)`은 데코레이터이므로 `mcp.tool(...)(함수)`처럼 함수 호출 형태로도 사용할 수 있습니다. 인자 설명(`Annotated[..., Field(description=...)]`)은 `graph_tool.func`의 타입 힌트에 이미 들어 있어 FastMCP가 그대로 입력 스키마로 변환합니다.
+
+---
+
+### 4단계: FastMCP 서버 기동 확인 (미션 2-4)
+
+새 터미널을 열어 작성한 FastMCP 서버가 오류 없이 기동되는지 확인합니다:
+
+```bash
+python app/mcp/enterprise_rag_server.py --port 8010
+```
+
+**성공 콘솔 출력:**
 ```text
-┌──────────────────────────────────────────────────────────────────────────────────┐
-│                             엔터프라이즈 4대 DB 파이프라인                          │
-├────────────────────────────────┬──────────────────────┬──────────────────────────┤
-│ 데이터베이스                    │ 원천 데이터           │ 변환 및 색인 파이프라인   │
-├────────────────────────────────┼──────────────────────┼──────────────────────────┤
-│ [DB 1] enterprise_policy_store │ data/policies/*.md   │ ContextualHeaderEnricher │
-│        (Chroma Vector DB)      │ (사내 복무/여비/보안) │ ➔ Chroma 컬렉션 (24청크) │
-├────────────────────────────────┼──────────────────────┼──────────────────────────┤
-│ [DB 2] bok_industry_reports_   │ data/bok_.../*.pdf   │ PDF 노이즈 정제 +        │
-│        store (Chroma Vector)   │ (한국은행 산업보고서)│ Header Promotion ➔ Chroma│
-├────────────────────────────────┼──────────────────────┼──────────────────────────┤
-│ [DB 3] knowledge_graph_        │ data/graph/          │ LLM 트리플렛 추출 ➔       │
-│        nodelink.json (NetworkX)│ org_relationships.txt│ NetworkX NodeLink JSON   │
-├────────────────────────────────┼──────────────────────┼──────────────────────────┤
-│ [DB 4] app/database/graphrag/  │ data/graphrag/       │ Leiden 커뮤니티 리포트   │
-│        (Microsoft GraphRAG)    │ (사전 인덱싱 산출물) │ ➔ 디렉터리 동기화(sync)   │
-└────────────────────────────────┴──────────────────────┴──────────────────────────┘
+🚀 Enterprise RAG FastMCP 서버 시작 (포트: 8010, Bearer 인증 + 도구별 인가 활성화)...
 ```
 
 ---
 
-### 2단계: [디딤돌 실습] 4대 DB 통합 검색 검증 (미션 2-2)
-
-사전 구축되어 있는 4대 데이터베이스가 정상적으로 쿼리에 응답하는지 `app/mcp/test_database.py`를 실행하여 확인합니다:
-
-```bash
-python app/mcp/test_database.py
-```
-
-#### 🖥️ 기대 콘솔 출력 (전체 4대 DB 검증 성공 로그):
-```text
-🚀 [4대 엔터프라이즈 RAG 데이터베이스 통합 검색 검증 시작]
-
-===========================================================================
-🔍 [DB 1] 사내 규정집 Chroma Vector DB 검색 테스트 (통합 chroma_db)
-===========================================================================
-  • 질의문: '과장급 직원이 당일 출장을 다녀올 때 일비와 식비 감액 기준'
-  • 검색된 청크 수: 2개
-
-  [결과 #1]
-  - 출처 파일: 2026_국내여비교통비지급규정.md
-  - 목차 계층(Breadcrumb): (주)넥스트AI 국내 여비 및 교통비 지급 규정 > 제3장 숙박비, 일비 및 식비 지급 기준 > 제15조 (일비 및 식비 정액 지급 기준)
-  - 본문 발췌:
-    • (주)넥스트AI 국내 여비 및 교통비 지급 규정
-      - 제1장 총칙
-        ...
-
-  [결과 #2]
-  - 출처 파일: 2026_국내여비교통비지급규정.md
-  - 목차 계층(Breadcrumb): ... > 제3장 숙박비, 일비 및 식비 지급 기준 > 제14조 (숙박비 지급 한도)
-  ...
-
-  ✅ [DB 1 검증 완료] 사내 규정 Vector DB 정상 작동!
-
-===========================================================================
-🔍 [DB 2] 한국은행 (BOK) 산업보고서 Chroma Vector DB 검색 테스트 (통합 chroma_db)
-===========================================================================
-  • 질의문: '2024년 3분기 반도체 수출 실적 및 메모리 가격 동향'
-  • 검색된 청크 수: 2개
-
-  [결과 #1]
-  - 출처 파일: 2024_2사분기_주력산업_모니터링_보고서.pdf
-  ...
-  [결과 #2]
-  - 출처 파일: 2024_4사분기_주력산업_모니터링_보고서.pdf
-  ...
-
-  ✅ [DB 2 검증 완료] BOK 산업보고서 Vector DB 정상 작동!
-
-===========================================================================
-🔍 [DB 3] NetworkX 조직/프로젝트 지식 그래프 탐색 테스트
-===========================================================================
-  • 총 노드 수: 57개, 총 관계(엣지) 수: 56개
-  • 탐색 시작 엔티티: '김철수 수석' (최대 2-Hop BFS 확장)
-  • 방문한 엔티티 (7개): {'클라우드사업본부', '김철수 수석', '클라우드운영팀', '데이터플랫폼팀', '최책임 책임엔지니어', '이선임 선임엔지니어', 'AgenticAI팀'}
-  • 연결된 2-Hop 서브그래프 관계 목록:
-    - [클라우드사업본부] ──(산하조직)──> [클라우드운영팀]
-    - [클라우드운영팀] ──(팀장)──> [김철수 수석]
-    - [클라우드운영팀] ──(주간 기술 협의체 운영 대상)──> [데이터플랫폼팀]
-    - [이선임 선임엔지니어] ──(소속팀)──> [클라우드운영팀]
-    - [최책임 책임엔지니어] ──(소속팀)──> [클라우드운영팀]
-    - [AgenticAI팀] ──(인력 파견 협업)──> [클라우드운영팀]
-
-  ✅ [DB 3 검증 완료] 조직도 지식 그래프 2-Hop 탐색 정상 작동!
-
-===========================================================================
-🔍 [DB 4] Microsoft GraphRAG (Global & Local Search) 질의 테스트
-===========================================================================
-  🌐 [4-1. Global Search 쿼리]:
-     '전사 프로젝트들의 핵심 목표와 공통 리스크를 요약해줘.'
-  -> Global 응답 미리보기:
-     ### 전사 주요 프로젝트의 핵심 목표
-     각 전사 프로젝트의 주요 추진 목표와 승인된 예산 현황은 다음과 같습니다...
-
-  ----------------------------------------------------------------------
-  🎯 [4-2. Local Search 쿼리]:
-     '클라우드운영팀 김철수 수석의 역할과 소속 보고선은 어떻게 되나요?'
-  -> Local 응답 미리보기:
-     김철수는 클라우드운영팀의 부서장(팀장)을 맡고 있으며, 전략 프로젝트인 '프로젝트 P-01: 클라우드 네이티브 마이그레이션'의 총괄 프로젝트 매니저(PM)를 겸임하고 있습니다...
-
-  ✅ [DB 4 검증 완료] Microsoft GraphRAG 정상 작동!
-
-===========================================================================
-🎉 축하합니다! 4대 데이터베이스가 모두 완벽하게 검색되고 있습니다.
-===========================================================================
-```
-
-#### 🔍 출력 확인 포인트
-1. `[DB 1]` 결과 #1의 Breadcrumb이 **제15조 (일비 및 식비 정액 지급 기준)** 인가요? (본문 발췌 첫 줄은 청크 앞에 붙은 문서 목차 헤더라서 조항 본문이 아니라 목차가 보입니다.)
-2. `[DB 2]` 질문은 **"3분기"** 인데 결과는 **2사분기·4사분기** 보고서가 나옵니다. 청크마다 `quarter` 메타데이터가 있지만 검색할 때 필터로 쓰지 않으면 분기를 구분하지 못합니다.  
-   👉 그래서 `tool_rag_agent`와 MCP 서버의 `search_bok_reports`에는 `quarter` 인자가 있습니다. (Mission 01 시나리오 3, 4교시 평가에서 다시 다룹니다.)
-3. `[DB 3]` `김철수 수석`에서 출발한 2-Hop 관계에 `클라우드사업본부`가 포함되나요?
-4. `[DB 4]` Global / Local 질의가 모두 응답하나요? (LLM이 생성하므로 문장은 실행할 때마다 조금씩 다릅니다.)
-
-> [!TIP]
-> **🌟 [Mission 03 예습 팁]**  
-> `app/mcp/test_database.py`의 각 함수(`test_1_...` ~ `test_4_...`) 내부 코드는 Mission 03에서 FastMCP 도구(`enterprise_rag_server.py`)를 작성할 때 **도구 함수 본문으로 그대로 활용되는 표준 레퍼런스 코드**입니다.
-
----
-
-### 3단계: 배치 빌드 파이프라인 코드 분석 (미션 2-3)
-
-`app/mcp/build_database.py` 파일을 열어 비정형 문서를 엔터프라이즈 DB로 색인하는 핵심 파이프라인 구조를 분석합니다:
-
-1. **`build_policy()`**:
-   - `data/policies/*.md` 파일들을 읽어 `ContextualHeaderEnricher`로 문맥 헤더를 주입한 뒤 `enterprise_policy_store` 컬렉션을 생성 (기본 24개 청크)
-2. **`build_bok()`**:
-   - PDF의 머리말/바닥글 노이즈를 정제하고, 산업명(`# 반도체`)을 H1 헤더로 승격(`BOK_PDF_OPTIONS`)하여 `bok_industry_reports_store` 컬렉션 생성 (130개 청크)
-3. **`build_graph()`**:
-   - `data/graph/org_relationships.txt`에서 LLM을 통해 트리플렛을 추출하고 `networkx.node_link_data` JSON으로 저장
-4. **`sync_graphrag()`**:
-   - 사전 빌드된 GraphRAG Parquet 및 LanceDB 산출물을 `app/database/graphrag`로 안전하게 동기화
-
----
-
-### 4단계: [실전 빌드] 신규 사내 규정 제로 코드 추가 및 UI 검증 (미션 2-4)
-
-현업에서 새로운 규정 문서가 제정되었을 때, RAG 시스템에 어떻게 반영하는지 실습합니다.  
-`data/new_documents/2026_복리후생지원규정.md` 파일을 열어 자기계발비, 자격증 취득 포상금, 종합건강검진 규정을 확인하세요.
-
-이제 **파이썬 코드는 단 한 줄도 수정하지 않고**, `--extra-docs` 옵션으로 신규 규정을 함께 인덱싱합니다:
-
-```bash
-python app/mcp/build_database.py --targets policy --extra-docs data/new_documents
-```
-
-#### 🖥️ 기대 콘솔 출력:
-```text
-📦 [policy] 사내 규정 4개 문서 인덱싱
-    - data/policies/2026_국내여비교통비지급규정.md
-    - data/policies/2026_인사복무규정.md
-    - data/policies/2026_정보보안관리지침.md
-    - data/new_documents/2026_복리후생지원규정.md
-  ✅ enterprise_policy_store: 30개 청크
-🎉 빌드 완료. 'python app/mcp/test_database.py'로 검색을 검증하세요.
-```
-> 💡 청크 수가 기존 **24개 ➔ 30개**로 6개 청크가 성공적으로 증분 반영되었음을 확인하세요!
-
-#### 🧪 Chainlit 웹 UI에서 신규 규정 검색 검증:
-1. 백엔드 서버(`python app/server.py`)를 재시작합니다.
-2. Chainlit UI(`http://localhost:8080`)에서 **`tool_rag_agent`**를 선택하고 아래 3가지 질문을 차례로 전송합니다:
-
-| 질문 | 기대 답변 내용 | 근거 조항 |
-| :--- | :--- | :--- |
-| `"자기계발비는 1년에 얼마까지 지원되나요?"` | 1인당 연 1,200,000원 한도 (직무 관련 교육비·도서 구입비·자격증 응시료) | 제5조 (자기계발비) |
-| `"정보처리기사를 취득하면 포상금이 얼마인가요?"` | 실무자 등급에 해당하여 300,000원 지급 | 제6조 (어학 및 자격 취득 포상) |
-| `"34살 직원은 종합건강검진을 매년 받을 수 있나요?"` | 아니요. 만 35세 미만은 2년에 1회 (만 35세 이상부터 매년 1회), 1회 최대 500,000원 | 제10조 (종합건강검진) |
-
-> 💡 **비교 실험**: 5단계 롤백 후 같은 질문을 다시 던져 보세요. 복리후생 규정이 인덱스에서 빠졌으므로, 에이전트가 근거 조항을 제시하지 못하고 "관련 규정을 찾을 수 없다"는 취지로 답하는지 확인합니다.
-
----
-
-### 5단계: [롤백 가이드] 초기 상태로 원상 복구하는 법
-
-실습이 끝난 후, 또는 신규 규정을 제외하고 **원래의 3종 기본 규정(24개 청크) 상태로 되돌리고 싶을 때는 언제든 아래 명령어로 즉시 롤백**할 수 있습니다:
-
-#### 🔄 방법 1: `--extra-docs` 없이 policy 빌드 재실행 (추천)
-```bash
-python app/mcp/build_database.py --targets policy
-```
-* **동작 원리**: `--extra-docs` 인자를 주지 않으면 `build_policy()`는 기존 `data/policies/*.md` 3개 문서만 읽어서 컬렉션을 다시 생성하므로, **단 5초 만에 정확히 24개 청크 초기 상태로 깔끔하게 복원**됩니다.
-
-#### 🔄 방법 2: 백업 복원 (API 호출 없는 0초 즉시 롤백)
-실습 전 미리 백업해 두고 즉시 덮어쓰고 싶다면:
-```bash
-# 백업 생성 (실습 전)
-cp -r app/database/chroma_db app/database/chroma_db.bak
-
-# 롤백 복원 (언제든 필요할 때)
-rm -rf app/database/chroma_db && cp -r app/database/chroma_db.bak app/database/chroma_db
-```
+> [!IMPORTANT]
+> ### ✅ Mission 02 완료 → 노트북 `3_MCP_and_Skills.ipynb`의 Part 3 실습 셀로 돌아가세요!
+> 1. 위 터미널에 띄운 MCP 서버(포트 8010)를 켜 둔 채로(또는 노트북의 서버 자동 기동 셀을 사용하여) 노트북 **Part 3의 코드 셀**부터 이어서 실행합니다.
+> 2. Part 3의 역할별 도구 가시성 표에서 **`partner(1개) / staff(2개) / manager(3개) / executive(8개)`** 가 정확히 출력되면 서버의 인증·인가 구현이 완벽히 성공한 것입니다!
+> 3. 이어서 내가 만든 서버를 대상으로 **Part 4(정적 바인딩)**, **Part 5(Search & Proxy)**, **Part 6.1(Skills 점진적 공개 개념)** 까지 실행한 뒤 **`missions/03_missions.md`(Mission 03)** 로 이동하세요.
 
 ---
 
@@ -239,19 +256,15 @@ rm -rf app/database/chroma_db && cp -r app/database/chroma_db.bak app/database/c
 
 | 증상 / 오류 메시지 | 원인 | 해결 방법 |
 | :--- | :--- | :--- |
-| `sqlite3.OperationalError: no such table` | Chroma DB 접근 권한 충돌 또는 잠금 | `server.py`를 종료한 후 `python app/mcp/build_database.py --targets policy` 재실행 |
-| 신규 규정 내용이 UI 검색에 안 나옴 | DB 빌드 후 백엔드 서버(`server.py`) 미재시작 | `tool_rag_agent`는 DB 인스턴스를 캐싱하므로 터미널 1의 서버를 반드시 `Ctrl + C` 후 재시작 |
-| `openai.RateLimitError` 발생 | 임베딩 API 호출 분당 한도 초과 | 잠시 대기(10~20초) 후 `--targets policy` 단독 빌드 실행 |
+| `❌ TODO 1, 2를 먼저 완성하세요.` | `mcp = None` 상태가 그대로 남아 있음 | 2단계의 `verifier = StaticTokenVerifier(...)` 및 `mcp = FastMCP(...)` 코드로 `TODO 1, 2`를 교체했는지 확인 |
+| `AttributeError: 'NoneType' object has no attribute 'tool'` | `mcp = FastMCP(...)`보다 `@mcp.tool`이 먼저 실행되었거나 `mcp = None`이 아래쪽에 남아 있음 | 2단계에서 `mcp = None  # TODO` 줄을 삭제하고 `mcp = FastMCP(...)`로 교체했는지 확인 |
+| `Address already in use (:8010)` | 이전 FastMCP 서버 프로세스가 이미 포트 8010을 점유 중 | `lsof -ti:8010 \| xargs -r kill -9` 또는 `pkill -f enterprise_rag_server` 실행 후 재기동 |
 
 ---
 
 ## 🏆 미션 완료 체크리스트
 
-- [ ] `app/database/`에 4대 데이터베이스가 사전 구축되어 배포되어 있음을 확인했다.
-- [ ] `test_database.py`를 실행하여 4대 데이터베이스 검색(사내 규정, BOK, 지식 그래프, GraphRAG)이 모두 성공함을 확인했다.
-- [ ] `build_database.py`의 문서 인덱싱 파이프라인 흐름을 이해했다.
-- [ ] `--extra-docs data/new_documents` 옵션으로 신규 규정을 인덱싱하여 청크 수가 24개 ➔ 30개로 확장됨을 확인했다.
-- [ ] Chainlit UI에서 `tool_rag_agent`가 새로 인덱싱된 복리후생 규정(자기계발비 120만원 등)을 정확히 인용해 답변함을 검증했다.
-- [ ] 필요할 때 초기 24개 청크 상태로 되돌리는 롤백 방법을 이해했다.
-
-축하합니다! 이제 여러분은 정형·비정형·그래프·커뮤니티 요약이 유기적으로 결합된 **엔터프라이즈 멀티모달 RAG 데이터베이스 인프라 구축 및 제로 코드 확장·롤백 기법**을 완벽하게 마스터했습니다. 🚀
+- [ ] `.env`에 `ENTERPRISE_RAG_MCP_TOKEN`이 정상 설정되어 있음을 확인했다.
+- [ ] `app/mcp/enterprise_rag_server.py`에 `StaticTokenVerifier`, `ROLE_PROFILES`, `require_clearance`, `AuthMiddleware` 기반의 인증·인가 서버 인스턴스를 완성했다 (`TODO 1, 2`).
+- [ ] 검색 도구 3종(`search_company_policy`, `search_aws_guides`, `search_enterprise_erp`)과 그래프 탐색 도구 5종(`graph_*`)을 `@mcp.tool`로 등록했다 (`TODO 4, 5`).
+- [ ] 포트 `8010`에 FastMCP 서버를 기동하고, 노트북 Part 3의 역할별 도구 가시성 표(`partner` 1개, `staff` 2개, `manager` 3개, `executive` 8개)가 정상 출력됨을 확인했다.

@@ -31,7 +31,7 @@ class SkillPromptBuilder:
         skills_dirs: Optional[List[str]] = None,
         guidelines_path: Optional[str] = None,
     ):
-        self.skills_dirs = [Path(p).resolve() for p in (skills_dirs or ["./skills"])]
+        self.skills_dirs = [Path(p).resolve() for p in (skills_dirs or ["./app/agents/skill_rag_agent/skills"])]
         self.guidelines_path = Path(guidelines_path).resolve() if guidelines_path else None
 
     @staticmethod

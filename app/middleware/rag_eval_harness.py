@@ -44,12 +44,15 @@ def _weighted(model: BaseModel, weights: Dict[str, float]) -> float:
 
 
 class TrajectoryEvaluation(BaseModel):
-    """과정(Tool Trajectory) 채점 스키마. trajectory_score는 코드에서 계산합니다."""
+    """과정(Tool Trajectory) 채점 스키마. trajectory_score는 코드에서 계산합니다.
+
+    critique를 점수보다 먼저 두어, 채점기가 근거를 먼저 쓰고 점수를 매기게 합니다 (점수 흔들림 감소).
+    """
+    critique: str = Field(description="점수를 매기기 전에 쓰는 과정 감사 의견 (2~3문장). 호출마다 어떤 정보를 얻으려 했고 중복·헛돌기가 있었는지 먼저 적습니다.")
     tool_selection_accuracy: float = Field(description="질문 도메인에 적합한 도구를 선택했는가? (0.0 ~ 1.0)")
     argument_quality_score: float = Field(description="도구 인자(검색 쿼리)가 모호하지 않고 핵심 키워드를 잘 담았는가? (0.0 ~ 1.0)")
     step_economy_score: float = Field(description="불필요한 중복 호출이나 헛돌기 없이 최소 스텝으로 해결했는가? (0.0 ~ 1.0)")
-    observation_grounding_score: float = Field(description="검색된 도구 관측 결과를 최종 답변에 실질적으로 인용했는가? (0.0 ~ 1.0)")
-    critique: str = Field(description="도구 호출 과정에 대한 정성 감사 의견 (2~3문장)")
+    observation_grounding_score: float = Field(description="검색된 도구 관측 결과를 보고 다음 행동과 답변을 정했는가? (0.0 ~ 1.0)")
 
     @computed_field
     @property
@@ -58,7 +61,11 @@ class TrajectoryEvaluation(BaseModel):
 
 
 class OutcomeEvaluation(BaseModel):
-    """결과(Outcome) 채점 스키마. outcome_score는 코드에서 계산합니다."""
+    """결과(Outcome) 채점 스키마. outcome_score는 코드에서 계산합니다.
+
+    rationale을 점수보다 먼저 두어, 정답의 핵심 사실을 하나씩 대조한 뒤 점수를 매기게 합니다.
+    """
+    rationale: str = Field(description="점수를 매기기 전에 쓰는 대조 메모 (3~5문장). Ground Truth의 핵심 사실을 하나씩 답변과 대조하고, 답변의 주장이 Contexts에 있는지 적습니다.")
     answer_correctness: float = Field(description="정답 일치: 답변의 핵심 사실(수치, 조항, 인물, 결론)이 Ground Truth와 일치하는가? (0.0 ~ 1.0)")
     faithfulness: float = Field(description="충실도: 답변의 모든 내용이 검색 문서에 근거하는가? (환각 0% = 1.0)")
     answer_relevance: float = Field(description="답변 관련성: 답변이 사용자의 질문에 직접 답하는가? (0.0 ~ 1.0)")
@@ -222,15 +229,19 @@ class RAGEvalHarnessMiddleware(AgentMiddleware):
             f"- result_excerpt는 도구 결과의 **발췌**입니다(문맥 헤더 제거, 일부 생략). 답변의 사실이 발췌에 보이지 않는다는 이유로 감점하지 마세요.\n"
             f"  답변이 검색 결과에 근거하는지는 다른 평가자가 검색 결과 전문으로 따로 채점합니다. 여기서는 **과정**만 평가합니다.\n"
             f"- 권장 도구는 기준일 뿐입니다. 권장 도구를 쓰고, 질문에 도움이 되는 다른 도구를 추가로 쓴 것은 감점하지 않습니다.\n"
-            f"- 호출 수는 질문이 요구하는 서로 다른 정보의 개수가 기준입니다(예: 두 분기 비교 → 분기별 1회씩 2회).\n"
-            f"  서로 다른 정보를 얻기 위한 호출은 감점하지 않고, 같은 정보를 검색어만 바꿔 반복하거나 원하는 결과를 못 얻고 헛도는 호출만 감점합니다.\n\n"
-            f"다음 4개 지표를 각각 독립적으로 0.0 ~ 1.0 점수로 채점하세요:\n"
+            f"- 권장 도구 중 'A | B'처럼 묶인 항목은 같은 정보를 가진 대체 도구입니다. 둘 중 하나만 써도 권장 도구를 쓴 것으로 봅니다.\n"
+            f"- 호출 수는 질문이 요구하는 서로 다른 정보의 개수가 기준입니다(예: 두 아키텍처 영역 비교 → 영역별 1회씩 2회).\n"
+            f"  서로 다른 정보를 얻기 위한 호출은 감점하지 않고, 같은 정보를 검색어만 바꿔 반복하거나 원하는 결과를 못 얻고 헛도는 호출만 감점합니다.\n"
+            f"- 도구가 오류나 '결과 없음'을 돌려준 뒤 인자를 고쳐 다시 호출한 것은 정상적인 대응입니다. 같은 실패를 반복할 때만 감점합니다.\n\n"
+            f"먼저 critique에 호출마다 무엇을 얻으려 했는지, 중복·헛돌기가 있었는지 2~3문장으로 적으세요. 문제가 없으면 그렇다고 적으세요.\n"
+            f"그다음 4개 지표를 각각 독립적으로 0.0 ~ 1.0 점수로 채점하세요 (기준점: 1.0 문제 없음 / 0.7 사소한 문제 1개 / 0.4 명확한 문제 / 0.0 실패):\n"
             f"1. tool_selection_accuracy: 질문에 필요한 정보가 있는 도구를 골랐는가? (권장 도구 미사용, 무관한 도구 사용 시 감점)\n"
             f"2. argument_quality_score: 검색어와 인자가 필요한 정보를 정확히 겨냥했는가?\n"
-            f"3. step_economy_score: 위 기준으로, 불필요한 반복 없이 해결했는가?\n"
+            f"3. step_economy_score: 위 기준으로, 불필요한 반복 없이 해결했는가? "
+            f"(1.0 필요한 정보 개수만큼 호출 / 0.7 불필요한 호출 1~2회 / 0.4 헛도는 호출 3회 이상 / 0.0 같은 호출을 끝없이 반복)\n"
             f"4. observation_grounding_score: 도구 결과를 보고 다음 행동과 답변을 정했는가? "
-            f"(예: 원하지 않는 결과가 왔을 때 알아차리고 대응했는가, 받은 결과와 모순되게 답하지 않았는가)\n"
-            f"마지막으로 critique에 과정의 핵심 문제를 2~3문장으로 적으세요. 문제가 없으면 그렇다고 적으세요.\n"
+            f"(예: 원하지 않는 결과가 왔을 때 알아차리고 대응했는가, 받은 결과와 명백히 모순되게 답하지 않았는가. "
+            f"발췌에 보이지 않는 수치를 답변에 썼다는 이유만으로는 감점하지 않습니다)\n"
         )
         try:
             llm = self._get_judge_llm()
@@ -240,11 +251,11 @@ class RAGEvalHarnessMiddleware(AgentMiddleware):
             if self.strict:
                 raise
             return TrajectoryEvaluation(
+                critique=f"Trajectory evaluation fallback: {e}",
                 tool_selection_accuracy=0.8,
                 argument_quality_score=0.8,
                 step_economy_score=0.8,
                 observation_grounding_score=0.8,
-                critique=f"Trajectory evaluation fallback: {e}"
             )
 
     def evaluate_outcome(
@@ -262,10 +273,15 @@ class RAGEvalHarnessMiddleware(AgentMiddleware):
             f"[Ground Truth 정답]: {ground_truth}\n"
             f"[검색된 Contexts]:\n{context_str}\n\n"
             f"[에이전트 최종 생성 답변]:\n{final_answer}\n\n"
-            f"다음 5개 지표를 각각 독립적으로 0.0 ~ 1.0 점수로 채점하세요:\n"
+            f"먼저 rationale에 Ground Truth의 핵심 사실을 하나씩 답변과 대조하고, 답변의 주요 주장이 Contexts에 있는지 3~5문장으로 적으세요.\n"
+            f"그다음 5개 지표를 각각 독립적으로 0.0 ~ 1.0 점수로 채점하세요 (기준점: 1.0 완전 / 0.7 사소한 누락·오류 1개 / 0.4 핵심 사실 일부 틀림·누락 / 0.0 틀리거나 없음):\n"
             f"1. answer_correctness: 답변의 핵심 사실(수치, 조항, 인물, 결론)이 Ground Truth와 일치하는가?\n"
             f"   검색 결과와 무관하게 정답과만 비교합니다. 핵심 수치가 틀리면 크게 감점하고, 표현 차이는 감점하지 않습니다.\n"
+            f"   Ground Truth에 없는 추가 정보는 Ground Truth와 모순되지 않는 한 감점하지 않습니다. 감점은 핵심 사실의 누락과 모순에만 합니다.\n"
+            f"   Ground Truth가 '확인되지 않는다고 답해야 한다'고 정한 문항은, 답변이 그렇게 결론 내리면 정답입니다. "
+            f"실제로 존재하는 관련 제도를 '참고'로 덧붙인 것은 감점하지 않고, 요청한 제도의 기준·금액을 지어낸 경우에만 0점입니다.\n"
             f"2. faithfulness: 답변의 내용이 검색된 Contexts에 근거하는가? (Contexts에 없는 내용을 지어내면 감점)\n"
+            f"   Ground Truth가 아니라 Contexts만 기준으로 봅니다. Contexts의 영어 원문이나 다른 표기(영문 엔티티명 등)를 번역·요약한 내용도 근거로 인정합니다.\n"
             f"3. answer_relevance: 답변이 사용자 질문에 직접 답하는가? (정답 여부와 별개로, 질문을 벗어나면 감점)\n"
             f"4. context_precision: 검색된 문서 중 정답 작성에 유용한 내용의 비중\n"
             f"5. context_recall: Ground Truth의 핵심 사실들이 Contexts에 얼마나 빠짐없이 들어 있는가?\n"
@@ -278,6 +294,7 @@ class RAGEvalHarnessMiddleware(AgentMiddleware):
             if self.strict:
                 raise
             return OutcomeEvaluation(
+                rationale=f"Outcome evaluation fallback: {e}",
                 answer_correctness=0.80,
                 faithfulness=0.85,
                 answer_relevance=0.85,
@@ -301,7 +318,7 @@ class RAGEvalHarnessMiddleware(AgentMiddleware):
 
         # 1. 과정 평가 (Trajectory)
         executed_tool_names = [t["tool_name"] for t in self.active_trajectory]
-        target_tools = getattr(runtime, "target_tools", ["query_company_policy", "query_bok_reports", "query_org_graph"]) if runtime else []
+        target_tools = getattr(runtime, "target_tools", ["search_company_policy", "search_aws_guides", "search_enterprise_erp", "graph_find_entities", "graph_neighbors", "graph_find_path", "graph_search_communities", "graph_read"]) if runtime else []
         ground_truth = getattr(runtime, "ground_truth", "") if runtime else ""
 
         traj_eval = self.evaluate_trajectory(user_query, target_tools, self.active_trajectory, final_answer)

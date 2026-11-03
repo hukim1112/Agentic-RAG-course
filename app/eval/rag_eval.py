@@ -10,7 +10,7 @@ app/eval/rag_eval.py
 
 사용 예:
   python -m app.eval.rag_eval --agent tool_rag_agent
-  python -m app.eval.rag_eval --agent tool_rag_agent --ids term-01 bok-01
+  python -m app.eval.rag_eval --agent tool_rag_agent --ids term-01 aws-01
   python -m app.eval.rag_eval --agent tool_rag_agent --compare artifacts/eval_runs/tool_rag_agent_20261003_101500.json
 """
 
@@ -45,6 +45,9 @@ from app.middleware.rag_eval_harness import (
 GOLDEN_PATH = os.path.join(PROJECT_ROOT, "data/eval/golden_eval_dataset.json")
 REPORT_DIR = os.path.join(PROJECT_ROOT, "artifacts/eval_runs")
 PASS_THRESHOLD = 0.75
+# 같은 답변을 여러 번 채점해도 종합 점수는 최대 ±0.06 정도 흔들리고, 에이전트 실행 자체도 매번 조금씩 다릅니다.
+# 문항별 변화가 이 범위 안이면 개선/회귀로 판정하지 않습니다.
+NOISE_BAND = 0.10
 # 채점기는 평가 대상 에이전트(gemini)와 다른 계열의 모델을 써서 자기 답을 후하게 채점하는 편향을 줄입니다.
 JUDGE_MODEL = "gpt-5.4-mini"
 # 한 문항의 LangGraph 실행 단계 한도 (도구 호출 약 20회). 넘으면 "호출 한도 초과"로 기록하고 다음 문항으로 넘어갑니다.
@@ -165,6 +168,7 @@ def score_case(case: dict, record: dict, harness: RAGEvalHarnessMiddleware) -> d
         "duration_s": record["duration_s"],
         "diagnoses": diagnose(traj, outcome) + (["호출 한도 초과"] if record.get("hit_limit") else []),
         "critique": traj.critique,
+        "outcome_rationale": outcome.rationale,
         "question": case["question"],
         "answer": record["answer"],
     }
@@ -274,7 +278,7 @@ def compare_table(before: List[dict], after: List[dict]):
             "종합 (전)": p["composite"], "종합 (후)": r["composite"], "변화": delta,
             "호출 수 (전)": p["tool_calls"], "호출 수 (후)": r["tool_calls"],
             "소요(s) (전)": p["duration_s"], "소요(s) (후)": r["duration_s"],
-            "판정": "개선" if delta >= 0.05 else ("회귀 ⚠️" if delta <= -0.05 else "유지"),
+            "판정": "개선" if delta >= NOISE_BAND else ("회귀 ⚠️" if delta <= -NOISE_BAND else "유지"),
         })
     return pd.DataFrame(table)
 
