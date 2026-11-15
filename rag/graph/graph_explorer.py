@@ -328,7 +328,8 @@ class GraphExplorer:
 
     def search_communities(self, query: str, top_k: int = 3, level: Optional[int] = None) -> str:
         query_vec = self._embed(query)
-        hits = self._report_table.search(query_vec).distance_type("cosine").limit(max(top_k * 5, 20)).to_pandas()
+        search_limit = max(len(self.reports), 20) if level is not None else max(top_k * 5, 20)
+        hits = self._report_table.search(query_vec).distance_type("cosine").limit(search_limit).to_pandas()
         lines, count = [], 0
         for uid, dist in zip(hits["id"], hits["_distance"]):
             hrid = self._report_hrid_by_uuid.get(uid)
