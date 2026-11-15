@@ -416,8 +416,8 @@ def api_list_agents():
             continue
 
         description = f"Runtime loaded {agent_name} agent"
-        # roles 미표기 에이전트는 supervisor/chatbot 외에는 ["main", "sub"]로 간주
-        default_roles = ["main"] if agent_name in ("supervisor", "main_agent", "chatbot") else ["main", "sub"]
+        # roles 미표기 에이전트는 supervisor/file_rag_agent 외에는 ["main", "sub"]로 간주
+        default_roles = ["main"] if agent_name in ("supervisor", "main_agent", "file_rag_agent") else ["main", "sub"]
         try:
             if module_path in sys.modules:
                 module = sys.modules[module_path]

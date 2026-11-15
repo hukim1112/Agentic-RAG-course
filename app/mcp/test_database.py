@@ -1,33 +1,17 @@
 """
 app/mcp/test_database.py
 ========================
-[4대 엔터프라이즈 RAG 데이터베이스 통합 검색 검증 (Mission 02)]
+[4대 엔터프라이즈 RAG 데이터베이스 통합 검색 검증]
 
-이 스크립트는 `app/database/` 및 `app/database/graphrag/`에 구축된 4대 엔터프라이즈 데이터베이스를
-파이썬 코드로 직접 로드하고 검색하는 레퍼런스 코드입니다.
+이 스크립트는 `app/database/`에 구축된 4대 엔터프라이즈 데이터 소스를
+파이썬 코드로 직접 로드하고 검색하는 레퍼런스 및 설치 확인 스크립트입니다.
 `python app/mcp/build_database.py`로 DB를 다시 빌드한 뒤 이 스크립트로 검색 결과를 검증합니다.
 
-각 DB의 로드 및 검색 패턴은 다음과 같습니다:
-
-1. [DB 1: 사내 규정집 Chroma Vector DB + HybridRetriever]
-   - 로드: HybridRetriever.from_chroma(Chroma(collection_name="enterprise_policy_store", ...), window_size=2)
-   - 검색: policy_retriever.search(query, top_k=2) (약어 사전 + BM25 + Dense + RRF + ContextualWindow)
-   - 용도: 사내 여비/복무/보안 규정 및 감액 기준 검색
-
-2. [DB 2: AWS Well-Architected 아키텍처 백서 Chroma Vector DB + HybridRetriever]
-   - 로드: HybridRetriever.from_chroma(Chroma(collection_name="aws_waf_guides_store", ...), window_size=2)
-   - 검색: aws_retriever.search(query, top_k=2) (약어 사전 + BM25 + Dense + RRF + ContextualWindow)
-   - 용도: 보안(security), 신뢰성(reliability), 성능 효율성(performance), 비용 최적화(cost) 클라우드 아키텍처 모범 사례 검색
-
-3. [DB 3: NetworkX 인메모리 지식 그래프]
-   - 로드: nx.node_link_graph(json.load("app/database/knowledge_graph_nodelink.json"))
-   - 검색: multi_hop_search(G, seed_entities=[seed_entity], max_hops=2)
-   - 용도: 인물/부서의 직속 보고선(팀장, 본부장) 및 프로젝트 협업 관계 2-Hop BFS 고속 탐색
-
-4. [DB 4: Microsoft GraphRAG 인덱스 + 그래프 탐색 도구]
-   - 로드: get_graph_explorer() (entities/relationships/community_reports/text_units parquet + lancedb 임베딩)
-   - 검색: graph_find_entities → graph_neighbors / graph_find_path → graph_read, 전사 개요는 graph_search_communities
-   - 용도: 인물·부서·프로젝트의 보고선·담당·의존 관계 탐색 및 커뮤니티 리포트 기반 전사 개요
+검증 대상 4대 데이터베이스 (MCP 도구 매핑):
+1. [DB 1: 사내 규정집] Chroma `enterprise_policy_store` + HybridRetriever  → `search_company_policy`
+2. [DB 2: AWS 아키텍처 백서] Chroma `aws_waf_guides_store` + HybridRetriever → `search_aws_guides`
+3. [DB 3: 전사 지식 그래프] NetworkX (`knowledge_graph_nodelink.json`) & Microsoft GraphRAG (`graphrag/`) → `graph_*` 5종
+4. [DB 4: 사내 ERP 정형 DB] SQLite (`enterprise_erp.db`) + `semantic_layer.yaml` + `Text2SQL` → `search_enterprise_erp`
 """
 
 import os
@@ -46,6 +30,7 @@ load_dotenv(os.path.join(PROJECT_ROOT, ".env"), override=True)
 
 from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
+from app.utils import init_chat_model
 from rag.graph.graph_explorer import (
     graph_find_entities,
     graph_find_path,
@@ -54,11 +39,14 @@ from rag.graph.graph_explorer import (
     graph_search_communities,
 )
 from rag.graph.networkx_graph import multi_hop_search
+from rag.sql import DatabaseProfile, Text2SQL
 from rag.vector.retrieval import HybridRetriever
 
 # 공통 데이터베이스 디렉토리 경로
 DB_DIR = os.path.join(PROJECT_ROOT, "app/database")
 CHROMA_DIR = os.path.join(DB_DIR, "chroma_db")
+ERP_DB_PATH = os.path.join(DB_DIR, "enterprise_erp.db")
+SEMANTIC_LAYER_PATH = os.path.join(PROJECT_ROOT, "data/enterprise_erp_sql/semantic_layer.yaml")
 
 
 def _preview_body(doc, max_lines: int = 4) -> str:
@@ -74,15 +62,9 @@ def _preview_body(doc, max_lines: int = 4) -> str:
 # [DB 1] 사내 규정집 HybridRetriever (DomainDictionary + BM25 + Dense + RRF + ContextualWindow)
 # ==============================================================================
 def test_1_policy_vector_db():
-    """
-    [MCP 도구 매핑 레퍼런스: search_company_policy]
-    - collection_name: 'enterprise_policy_store'
-    - persist_directory: 'app/database/chroma_db'
-    - 역할: 여비지급규정, 인사복무규정, 정보보안지침 등 사내 규정집의 정확한 조항과 수치를
-            하이브리드 검색(약어 사전 + BM25 + Dense + RRF + ContextualWindow)으로 검색합니다.
-    """
+    """[MCP 도구 매핑: search_company_policy]"""
     print("=" * 75)
-    print("🔍 [DB 1] 사내 규정집 HybridRetriever 검색 테스트 (통합 chroma_db)")
+    print("🔍 [DB 1] 사내 규정집 HybridRetriever 검색 테스트 (enterprise_policy_store)")
     print("=" * 75)
 
     if not os.path.exists(CHROMA_DIR):
@@ -91,8 +73,6 @@ def test_1_policy_vector_db():
         return
 
     embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
-
-    # 💡 [MCP 구현 핵심 코드] Chroma 컬렉션에서 BM25와 ContextualWindow를 즉시 복원
     vectorstore = Chroma(
         collection_name="enterprise_policy_store",
         embedding_function=embeddings,
@@ -120,18 +100,12 @@ def test_1_policy_vector_db():
 
 
 # ==============================================================================
-# [DB 2] AWS Well-Architected 백서 HybridRetriever (DomainDictionary + BM25 + Dense + RRF + ContextualWindow)
+# [DB 2] AWS Well-Architected 백서 HybridRetriever
 # ==============================================================================
 def test_2_aws_vector_db():
-    """
-    [MCP 도구 매핑 레퍼런스: search_aws_guides]
-    - collection_name: 'aws_waf_guides_store'
-    - persist_directory: 'app/database/chroma_db'
-    - 역할: AWS Well-Architected 4대 Pillar 백서(Security, Reliability, Performance Efficiency, Cost Optimization)의
-            모범 사례(Best Practice), 안티패턴, 구현 지침을 하이브리드 검색으로 조회합니다.
-    """
+    """[MCP 도구 매핑: search_aws_guides]"""
     print("=" * 75)
-    print("🔍 [DB 2] AWS Well-Architected 백서 HybridRetriever 검색 테스트 (통합 chroma_db)")
+    print("🔍 [DB 2] AWS Well-Architected 백서 HybridRetriever 검색 테스트 (aws_waf_guides_store)")
     print("=" * 75)
 
     if not os.path.exists(CHROMA_DIR):
@@ -139,7 +113,6 @@ def test_2_aws_vector_db():
         return
 
     embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
-
     vectorstore = Chroma(
         collection_name="aws_waf_guides_store",
         embedding_function=embeddings,
@@ -166,17 +139,12 @@ def test_2_aws_vector_db():
 
 
 # ==============================================================================
-# [DB 3] NetworkX 조직/프로젝트 지식 그래프 (2-Hop BFS Multi-hop Search)
+# [DB 3] 전사 지식 그래프 (3-A. NetworkX 인메모리 그래프 & 3-B. Microsoft GraphRAG 탐색 도구 5종)
 # ==============================================================================
-def test_3_knowledge_graph_db():
-    """
-    [MCP 도구 매핑 레퍼런스: 없음 (2교시 실습용 NetworkX 그래프. MCP 서버의 그래프 질의는 GraphRAG 인덱스 기반 graph_* 탐색 도구가 담당)]
-    - 대상 파일: 'app/database/knowledge_graph_nodelink.json'
-    - 역할: 조직도 및 프로젝트 관계 그래프에서 특정 인물이나 팀의 직속 보고선(팀장/본부장),
-           인력 파견 협업 관계를 2-Hop BFS로 초고속(0ms급) 탐색합니다.
-    """
+def test_3_knowledge_graph_and_graphrag_db():
+    """[MCP 도구 매핑: graph_find_entities, graph_neighbors, graph_find_path, graph_search_communities, graph_read]"""
     print("=" * 75)
-    print("🔍 [DB 3] NetworkX 조직/프로젝트 지식 그래프 탐색 테스트")
+    print("🔍 [DB 3] 전사 지식 그래프 테스트 (NetworkX & Microsoft GraphRAG)")
     print("=" * 75)
 
     graph_file = os.path.join(DB_DIR, "knowledge_graph_nodelink.json")
@@ -189,52 +157,69 @@ def test_3_knowledge_graph_db():
     G = nx.node_link_graph(graph_data)
 
     seed_entity = "김철수 수석"
-    print(f"  • 총 노드 수: {G.number_of_nodes()}개, 총 관계(엣지) 수: {G.number_of_edges()}개")
-    print(f"  • 탐색 시작 엔티티: '{seed_entity}' (최대 2-Hop BFS 확장)")
-
+    print(f"  [3-A. NetworkX] 노드 {G.number_of_nodes()}개, 엣지 {G.number_of_edges()}개 | 시드: '{seed_entity}' (2-Hop BFS)")
     sub_edges, visited = multi_hop_search(G, seed_entities=[seed_entity], max_hops=2)
-
-    print(f"  • 방문한 엔티티 ({len(visited)}개): {visited}")
-    print("  • 연결된 2-Hop 서브그래프 관계 목록:")
-    for edge in sub_edges:
+    print(f"  • 방문 엔티티 ({len(visited)}개): {visited}")
+    for edge in sub_edges[:4]:
         rel = edge[2].get("relation", "연결됨")
         print(f"    - [{edge[0]}] ──({rel})──> [{edge[1]}]")
-
-    print("\n  ✅ [DB 3 검증 완료] 조직도 지식 그래프 2-Hop 탐색 정상 작동!\n")
-
-
-# ==============================================================================
-# [DB 4] Microsoft GraphRAG 인덱스 + 그래프 탐색 도구 5종
-# ==============================================================================
-def test_4_graphrag_db():
-    """
-    [MCP 도구 매핑 레퍼런스: graph_find_entities, graph_neighbors, graph_find_path, graph_search_communities, graph_read]
-    - 대상 디렉토리: 'app/database/graphrag'
-    - 역할: GraphRAG 인덱스(엔티티·관계·커뮤니티 리포트·원문 조각)를 LLM 호출 없이 단계적으로 탐색합니다.
-      엔티티 연결 → 관계 펼치기 / 경로 찾기 → 원문 확인, 전사 개요는 커뮤니티 리포트 검색
-    """
-    print("=" * 75)
-    print("🔍 [DB 4] Microsoft GraphRAG 인덱스 그래프 탐색 테스트")
-    print("=" * 75)
 
     if not os.path.exists(os.path.join(DB_DIR, "graphrag", "output")):
         print("  ❌ GraphRAG 인덱스가 없습니다. 'python app/mcp/build_database.py --targets graphrag'를 실행하세요.")
         return
 
+    print("\n  [3-B. Microsoft GraphRAG 탐색 도구 5종]")
     steps = [
-        ("4-1. 엔티티 연결", graph_find_entities, {"query": "클라우드운영팀 김철수 수석", "top_k": 3}),
-        ("4-2. 관계 펼치기", graph_neighbors, {"entity": "KIM CHUL-SOO", "query": "담당 프로젝트와 보고선", "top_k": 5}),
-        ("4-3. 경로 찾기", graph_find_path, {"source": "P-04", "target": "P-01"}),
-        ("4-4. 원문 확인", graph_read, {"ids": ["T3"]}),
-        ("4-5. 커뮤니티 리포트 검색", graph_search_communities, {"query": "전사 프로젝트들의 핵심 목표와 공통 리스크", "level": 0}),
+        ("엔티티 연결", graph_find_entities, {"query": "클라우드운영팀 김철수 수석", "top_k": 3}),
+        ("관계 펼치기", graph_neighbors, {"entity": "KIM CHUL-SOO", "query": "담당 프로젝트와 보고선", "top_k": 5}),
+        ("경로 찾기", graph_find_path, {"source": "P-04", "target": "P-01"}),
+        ("원문 확인", graph_read, {"ids": ["T3"]}),
+        ("커뮤니티 리포트 검색", graph_search_communities, {"query": "전사 프로젝트들의 핵심 목표와 공통 리스크", "level": 0}),
     ]
     for title, graph_tool, args in steps:
         print(f"\n  🎯 [{title}] {graph_tool.name}({args})")
         output = graph_tool.invoke(args)
-        for line in output.strip().split("\n")[:8]:
-            print(f"     {line[:160]}")
+        for line in output.strip().split("\n")[:5]:
+            print(f"     {line[:150]}")
 
-    print("\n  ✅ [DB 4 검증 완료] GraphRAG 인덱스 그래프 탐색 정상 작동!\n")
+    print("\n  ✅ [DB 3 검증 완료] NetworkX 및 GraphRAG 지식 그래프 탐색 정상 작동!\n")
+
+
+# ==============================================================================
+# [DB 4] 사내 ERP 정형 데이터베이스 (SQLite + Semantic Layer + Text2SQL)
+# ==============================================================================
+def test_4_enterprise_erp_sql_db():
+    """[MCP 도구 매핑: search_enterprise_erp]"""
+    print("=" * 75)
+    print("🔍 [DB 4] 사내 ERP 정형 데이터베이스 & Text2SQL 테스트 (enterprise_erp.db)")
+    print("=" * 75)
+
+    if not os.path.exists(ERP_DB_PATH):
+        print(f"  ❌ ERP SQLite 파일이 없습니다: {ERP_DB_PATH}")
+        print("     먼저 'python app/mcp/build_database.py --targets erp'를 실행하세요.")
+        return
+
+    profile = DatabaseProfile.load(SEMANTIC_LAYER_PATH, db_path=ERP_DB_PATH)
+    print(f"  • DB 및 시멘틱 레이어 검증 완료: 테이블 {len(profile.tables)}개 ({', '.join(profile.tables.keys())})")
+    print(f"  • 등록된 표준 업무 지표(Metrics): {len(profile.metrics)}개 ({', '.join(profile.metrics.keys())})")
+
+    embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
+    llm = init_chat_model(model="gemini-3.8-flash", temperature=0.0)
+    erp_text2sql = Text2SQL.from_semantic_layer(
+        SEMANTIC_LAYER_PATH,
+        llm=llm,
+        db_path=ERP_DB_PATH,
+        embeddings=embeddings,
+    )
+
+    query = "AgenticAI팀이 주관하는 전략 프로젝트의 프로젝트 코드, 프로젝트명, 승인 예산을 조회해줘"
+    print(f"  • 질의문: '{query}'")
+    result = erp_text2sql.invoke(query)
+    print(f"  • 생성된 SQL: {result.sql}")
+    for line in result.to_text().splitlines()[:10]:
+        print(f"    {line}")
+
+    print("\n  ✅ [DB 4 검증 완료] 사내 ERP 정형 DB 시멘틱 레이어 및 Text2SQL 정상 작동!\n")
 
 
 # ==============================================================================
@@ -244,10 +229,9 @@ if __name__ == "__main__":
     print("\n🚀 [4대 엔터프라이즈 RAG 데이터베이스 통합 검색 검증 시작]\n")
     test_1_policy_vector_db()
     test_2_aws_vector_db()
-    test_3_knowledge_graph_db()
-    test_4_graphrag_db()
+    test_3_knowledge_graph_and_graphrag_db()
+    test_4_enterprise_erp_sql_db()
     print("=" * 75)
-    print("🎉 축하합니다! 4대 데이터베이스가 모두 완벽하게 검색되고 있습니다.")
-    print("💡 이제 위 4개 함수의 로드/검색 로직을 그대로 복사하여")
-    print("   'app/mcp/enterprise_rag_server.py'의 FastMCP 도구(@mcp.tool)를 구현하세요!")
+    print("🎉 축하합니다! 4대 엔터프라이즈 데이터베이스(규정·백서·지식그래프·ERP)가 모두 정상 작동합니다.")
+    print("💡 이제 위 로드/검색 패턴을 그대로 활용하여 에이전트 도구와 FastMCP 서버를 구동할 수 있습니다!")
     print("=" * 75 + "\n")

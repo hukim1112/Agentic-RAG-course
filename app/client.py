@@ -368,7 +368,7 @@ if __name__ == "__main__":
     print("  quit / exit          : Exit console")
     print("=" * 50)
 
-    current_agent = available_agents[0] if available_agents else "chatbot"
+    current_agent = available_agents[0] if available_agents else "file_rag_agent"
     thread_id = "cli_test_thread"
 
     while True:
