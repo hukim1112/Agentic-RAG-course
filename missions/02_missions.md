@@ -24,8 +24,8 @@ FastAPI 백엔드 서버와 Chainlit 채팅 UI 환경에서 가동하여 **에�
 
 ## 📋 미션 목표
 
-1. **[미션 2-1] 환경 확인 및 서버/UI 가동**:
-   - 필수 API 키를 점검하고, FastAPI 백엔드와 Chainlit UI를 띄워 Mission 01에서 만든 베이스 에이전트(`file_rag_agent`)와의 통신을 확인합니다.
+1. **[미션 2-1] 서버/UI 가동 및 기본 통신 확인**:
+   - FastAPI 백엔드와 Chainlit UI를 띄워 Mission 01에서 만든 베이스 에이전트(`file_rag_agent`)와의 통신을 확인합니다.
 2. **[미션 2-2] Tool RAG Agent 완성 (`agent.py`)**:
    - `AsyncSqliteSaver` 기반의 SQLite 영구 세션 메모리를 구축하고, LLM과 4대 검색 도구를 바인딩한 에이전트 팩토리 함수를 구현합니다.
 3. **[미션 2-3] 웹 UI 단계별 시나리오 검증**:
@@ -37,20 +37,7 @@ FastAPI 백엔드 서버와 Chainlit 채팅 UI 환경에서 가동하여 **에�
 
 ## 🛠️ 단계별 수행 가이드
 
-### 1단계: 환경 변수 (.env) 확인
-
-터미널(WSL 환경)에서 에이전트 실행에 필요한 필수 API 키와 UI 시크릿이 정상 등록되어 있는지 확인합니다:
-
-```bash
-# 필수 환경 변수 등록 여부 점검 (값은 마스킹되어 이름만 출력됨)
-grep -E '^(OPENAI_API_KEY|GOOGLE_API_KEY|CHAINLIT_AUTH_SECRET)=' .env | cut -d= -f1
-```
-
-> 💡 **출력 확인**: 위 3개 키 이름이 모두 출력되어야 합니다. 누락된 항목이 있다면 `.env` 파일을 열어 설정하세요.
-
----
-
-### 2단계: 서버와 Chainlit UI 실행 (미션 2-1)
+### 1단계: 서버와 Chainlit UI 실행 (미션 2-1)
 
 터미널 2개를 열어 각각 백엔드 서버와 프론트엔드 UI를 구동합니다:
 
@@ -86,7 +73,7 @@ Your app is available at http://localhost:8080
 
 ---
 
-### 3단계: `agent.py` 완성하기 (미션 2-2)
+### 2단계: `agent.py` 완성하기 (미션 2-2)
 
 `app/agents/tool_rag_agent/agent.py` 파일을 열고, `create_agent_executor()` 함수를 완성합니다.
 
@@ -124,7 +111,6 @@ async def create_agent_executor(checkpointer=None):
     llm = init_chat_model(model="gemini-3.8-flash", temperature=0.0)
 
     # 2. AsyncSqliteSaver 기반 영구 체크포인터 (세션 히스토리 영속화)
-    conn = None
     if checkpointer is None:
         db_dir = "app/database"
         os.makedirs(db_dir, exist_ok=True)
@@ -137,22 +123,20 @@ async def create_agent_executor(checkpointer=None):
         await checkpointer.setup()
 
     # 3. 4대 검색 도구와 ReAct 시스템 프롬프트를 바인딩한 에이전트 생성
-    tool_rag_agent = create_agent(
+    return create_agent(
         model=llm,
         tools=tools_tool_rag,
         system_prompt=TOOL_RAG_SYSTEM_PROMPT,
         checkpointer=checkpointer,
         context_schema=AgentContext,
     )
-    tool_rag_agent.checkpointer_conn = conn
-    return tool_rag_agent
 ```
 
 > ⚠️ **주의**: `create_agent_executor()`를 수정한 후에는 **터미널 1의 FastAPI 서버(`server.py`)를 재시작(`Ctrl + C` 후 재실행)**해야 새 에이전트 코드가 서버 런타임에 반영됩니다.
 
 ---
 
-### 4단계: 웹 UI에서 단계별 시나리오 검증 (미션 2-3)
+### 3단계: 웹 UI에서 단계별 시나리오 검증 (미션 2-3)
 
 터미널 1을 재시작한 후, Chainlit 웹 화면(`http://localhost:8080`)을 새로고침하고 좌측 상단 프로필 선택창에서 **`tool_rag_agent`**를 선택합니다.
 
@@ -204,7 +188,7 @@ async def create_agent_executor(checkpointer=None):
 
 ---
 
-### 5단계: 도구 설명(Docstring) 변경 실험 (심화 2-4)
+### 4단계: 도구 설명(Docstring) 변경 실험 (심화 2-4)
 
 프롬프트 엔지니어링만큼 강력한 **도구 설명(Tool Description)의 파급 효과**를 실험합니다.
 
@@ -227,7 +211,7 @@ async def create_agent_executor(checkpointer=None):
 
 | 증상 / 오류 메시지 | 원인 | 해결 방법 |
 | :--- | :--- | :--- |
-| `Address already in use (:8000 또는 :8080)` | 이전 프로세스가 정상 종료되지 않고 포트를 점유 중 | WSL 터미널에서 `lsof -ti:8000 \| xargs -r kill -9` 또는 포트 번호를 변경하여 실행 (`--port 8001`) |
+| `Address already in use (:8000 또는 :8080)` | 이전 프로세스가 정상 종료되지 않고 포트를 점유 중 | 터미널에서 `lsof -ti:8000 \| xargs -r kill -9` 또는 포트 번호를 변경하여 실행 (`--port 8001`) |
 | `sqlite3.OperationalError: database is locked` | SQLite DB 파일에 동시 접근 락이 걸림 | `pkill -f "python app/server.py"`로 모든 서버 프로세스를 종료한 후, `rm -f app/database/checkpoints.db*` 실행 후 재시작 |
 | UI 에이전트 목록에 `tool_rag_agent`가 안 뜸 | `agent.py` 코드 문법 오류 또는 팩토리 함수 미노출 | 터미널 1의 콘솔 로그에 출력된 Traceback을 확인하고, `create_agent_executor` 함수명이 오타 없이 작성되었는지 점검 |
 | 도구 호출 결과가 빈 문자열로 나옴 | DB가 아직 빌드되지 않음 | `app/database/chroma_db` 존재 여부 확인 후, `python app/mcp/build_database.py` 실행 |
@@ -236,7 +220,6 @@ async def create_agent_executor(checkpointer=None):
 
 ## 🏆 미션 완료 체크리스트
 
-- [ ] `.env` 파일의 필수 API 키 및 시크릿 설정을 확인했다.
 - [ ] FastAPI 백엔드(:8000)와 Chainlit UI(:8080)를 가동하여 베이스 에이전트(`file_rag_agent`)와의 기본 통신을 검증했다.
 - [ ] `app/agents/tool_rag_agent/agent.py`에 `AsyncSqliteSaver`와 검색 도구(`tools_tool_rag`)를 바인딩한 `create_agent_executor()`를 완성했다.
 - [ ] UI 에이전트 목록에서 `tool_rag_agent`가 정상 로드되고 선택 가능함을 확인했다.

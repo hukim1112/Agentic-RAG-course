@@ -140,13 +140,11 @@ erp_text2sql = Text2SQL.from_semantic_layer(
 )
 
 
-# 4. 입력 스키마: 각 도구의 인자 타입 힌트(Annotated, Field)로 정의하며 FastMCP가 Pydantic으로 검증합니다.
-
-# 5. FastMCP 도구 등록
+# 4. FastMCP 도구 등록 (입력 스키마는 인자 타입 힌트 Annotated·Field로 정의하며 FastMCP가 Pydantic으로 검증)
 #    - auth:  1층 scope (이 도메인에 접근할 수 있는가)
 #    - tags:  data:* 는 데이터 도메인, class:* 는 데이터 등급 (2층 등급 규칙이 읽음)
 #    권한이 없으면 도구 목록에서 숨겨지고 호출도 거부됩니다.
-# 5-1. 사내 규정: 사내한(internal) 등급
+# 4-1. 사내 규정: 사내한(internal) 등급
 @mcp.tool(
     name="search_company_policy",
     description=(
@@ -164,7 +162,7 @@ def search_company_policy(query: str) -> str:
     return "\n\n".join([f"[{d.metadata.get('breadcrumb', '사내규정')}]:\n{d.page_content}" for d in docs])
 
 
-# 5-2. AWS 백서: 공개(public) 등급
+# 4-2. AWS 백서: 공개(public) 등급
 @mcp.tool(
     name="search_aws_guides",
     description=(
@@ -182,7 +180,7 @@ def search_aws_guides(query: str) -> str:
     return "\n\n".join([f"[{d.metadata.get('breadcrumb', 'AWS 백서')}]:\n{d.page_content}" for d in docs])
 
 
-# 5-3. 사내 ERP: 대외비(confidential) 등급 (프로젝트 상세 예산 · 인사 데이터)
+# 4-3. 사내 ERP: 대외비(confidential) 등급 (프로젝트 상세 예산 · 인사 데이터)
 @mcp.tool(
     name="search_enterprise_erp",
     description=(
@@ -201,7 +199,7 @@ def search_enterprise_erp(
     return erp_text2sql.invoke(query, context=context).to_text()
 
 
-# 5-4. 지식 그래프 탐색 도구 5종: 대외비(confidential) 등급 (결재선 · 프로젝트 예산 · 리스크)
+# 4-4. 지식 그래프 탐색 도구 5종: 대외비(confidential) 등급 (결재선 · 프로젝트 예산 · 리스크)
 #      LangChain 도구의 이름·설명·함수를 그대로 등록해 tool_rag_agent와 정의를 공유합니다.
 for graph_tool in graph_explorer_tools:
     mcp.tool(

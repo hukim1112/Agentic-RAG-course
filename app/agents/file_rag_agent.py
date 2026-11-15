@@ -39,7 +39,6 @@ async def create_agent_executor(checkpointer=None):
     """File RAG ReAct Agent 팩토리 함수"""
     llm = init_chat_model(model="gemini-3.8-flash", temperature=0.0)
 
-    conn = None
     if checkpointer is None:
         db_dir = "app/database"
         os.makedirs(db_dir, exist_ok=True)
@@ -51,12 +50,10 @@ async def create_agent_executor(checkpointer=None):
         checkpointer = AsyncSqliteSaver(conn)
         await checkpointer.setup()
 
-    agent = create_agent(
+    return create_agent(
         model=llm,
         tools=file_rag_tools,
         system_prompt=FILE_RAG_SYSTEM_PROMPT,
         checkpointer=checkpointer,
         context_schema=AgentContext,
     )
-    agent.checkpointer_conn = conn
-    return agent

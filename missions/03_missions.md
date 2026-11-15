@@ -8,7 +8,7 @@
 ## 📂 실습 대상 및 핵심 파일
 
 * **MCP 서버 구현 파일 (TODO 작성 대상)**: `app/mcp/enterprise_rag_server.py`  
-  👉 **이 파일의 `TODO 1, 2`(인증·인가 프로바이더 및 서버 생성)와 `TODO 4, 5`(4대 DB 도구 등록)를 완성하세요!**
+  👉 **이 파일의 `TODO 1, 2`(인증·인가 프로바이더 및 서버 생성)와 `TODO 3`(4대 DB 도구 등록)을 완성하세요!**
 * **사전 구축된 4대 데이터베이스 (제공)**: `app/database/`
   - `chroma_db/`: 사내 규정(`enterprise_policy_store`, 239청크) 및 AWS Well-Architected 백서(`aws_waf_guides_store`, 4,641청크)
   - `enterprise_erp.db`: 사내 ERP 정형 데이터베이스 (SQLite, 7개 테이블 — `Text2SQL` 연동)
@@ -23,10 +23,10 @@
    - 사내 MCP 서버 전용 Bearer 토큰(`ENTERPRISE_RAG_MCP_TOKEN`)이 환경 변수에 설정되어 있는지 확인합니다.
 2. **[미션 3-2] FastMCP 토큰 인증기 및 2층 인가 미들웨어 구축 (`TODO 1, 2`)**:
    - `StaticTokenVerifier`에 에이전트 서비스 계정 토큰과 역할별 테스트 토큰(`:partner`, `:staff`, `:manager`, `:executive`)을 등록하고, 데이터 등급 규칙 `require_clearance`를 서버 전역 `AuthMiddleware`로 연결합니다.
-3. **[미션 3-3] 4대 데이터베이스 MCP 도구 노출 (`TODO 4, 5`)**:
+3. **[미션 3-3] 4대 데이터베이스 MCP 도구 노출 (`TODO 3`)**:
    - 검색 도구 3종(`search_company_policy`, `search_aws_guides`, `search_enterprise_erp`)과 지식 그래프 탐색 도구 5종(`graph_*`)을 도메인 scope(`require_scopes("<도메인>:read")`)와 데이터 등급 태그(`tags={"data:*", "class:*"}`)와 함께 등록합니다.
-4. **[미션 3-4] MCP 서버 기동 및 노트북 Part 3\~5 연동 확인**:
-   - 포트 `8010`에 서버를 띄우고, `notebooks/5_MCP_and_Skills.ipynb`의 역할별 도구 가시성 테스트(Part 3)와 에이전트 연결 실습(Part 4\~5)을 내가 만든 서버로 실행합니다.
+4. **[미션 3-4] MCP 서버 기동 및 노트북 Part 3\~6.1 연동 확인**:
+   - 포트 `8010`에 서버를 띄우고, `notebooks/5_MCP_and_Skills.ipynb`의 역할별 도구 가시성 테스트(Part 3)와 에이전트 연결 실습(Part 4\~5, Part 6.1 카탈로그 확인)을 내가 만든 서버로 실행합니다.
 
 ---
 
@@ -35,9 +35,10 @@
 | 순서 | 단계 | 수행 위치 |
 | :---: | :--- | :--- |
 | ① | **Part 1\~2 & Part 3(이론)**: MCP 개념, FastMCP 스키마 검증, 인증/인가 2층 구조 이해 | `notebooks/5_MCP_and_Skills.ipynb` |
-| ② | **🎯 Mission 03 (현재 문서)**: 토큰 확인 → `enterprise_rag_server.py` TODO 완성 → 서버 기동 | **이 문서 1\~4단계** |
-| ③ | **Part 3(실습)\~Part 6.1**: 역할별 가시성 검증, 정적 바인딩, Search & Proxy, Skills 개념 | `notebooks/5_MCP_and_Skills.ipynb` |
-| ④ | **🎯 Mission 04**: CLI 보안 검증 → `mcp_servers.json` 등록 → Chainlit에서 `skill_rag_agent` 비교 | `missions/04_missions.md` |
+| ② | **🎯 Mission 03 (현재 문서)**: 토큰 확인 → `enterprise_rag_server.py` TODO 1·2·3 완성 → 서버 기동 | **이 문서 1\~4단계** |
+| ③ | **Part 3(실습)\~Part 6.1(카탈로그 확인)**: 역할별 가시성 검증, 정적 바인딩, Search & Proxy, Skills 개념 | `notebooks/5_MCP_and_Skills.ipynb` |
+| ④ | **🎯 Mission 04 (1\~2단계)**: CLI 보안 검증 → `mcp_servers.json` 등록 | `missions/04_missions.md` |
+| ⑤ | **Part 6.1(레지스트리 확인)\~Part 7**: Skills 에이전트 실행·토큰 비노출 검증 및 마무리 → **Mission 04 (3단계: Chainlit 비교)** | `notebooks/5_MCP_and_Skills.ipynb` → `missions/04_missions.md` |
 
 ---
 
@@ -45,7 +46,7 @@
 
 ### 1단계: 인증 토큰 (.env) 확인 및 생성 (미션 3-1)
 
-터미널(WSL 환경)에서 사내 MCP 서버 전용 Bearer 토큰이 `.env`에 설정되어 있는지 확인합니다:
+터미널에서 사내 MCP 서버 전용 Bearer 토큰이 `.env`에 설정되어 있는지 확인합니다:
 
 ```bash
 # 토큰 환경변수 등록 여부 확인 (값은 마스킹되어 변수명만 출력됨)
@@ -132,9 +133,9 @@ mcp = FastMCP(
 
 ### 3단계: 4대 데이터베이스 MCP 도구 구현 (미션 3-3)
 
-이어서 `app/mcp/enterprise_rag_server.py` 하단의 **TODO 4(스키마 정의)와 TODO 5(검색 도구 3종 + 그래프 탐색 도구 5종)**를 완성합니다.
+이어서 `app/mcp/enterprise_rag_server.py` 하단의 **TODO 3(검색 도구 3종 + 그래프 탐색 도구 5종 등록)**을 완성합니다.
 
-> 📌 **붙여넣을 위치**: 아래 코드 블록 전체를 `TODO 4` · `TODO 5` 주석 아래, **`if __name__ == "__main__":` 줄 바로 위**에 붙여넣으세요.  
+> 📌 **교체 위치**: 파일 하단의 **`TODO 3` 주석 블록을 아래 코드 전체로 교체**하세요 (`if __name__ == "__main__":` 줄 바로 위).  
 > `@mcp.tool` 데코레이터는 2단계에서 만든 `mcp` 인스턴스를 사용하므로 반드시 2단계를 먼저 작성해야 합니다.
 
 각 도구에는 **두 층의 인가**가 적용됩니다:
@@ -151,15 +152,13 @@ mcp = FastMCP(
 지식 그래프 도구 5종(`graph_find_entities`, `graph_neighbors`, `graph_find_path`, `graph_search_communities`, `graph_read`)은 `rag/graph/graph_explorer.py`에 LangChain 도구로 이미 정의되어 있으므로, 중복 작성 없이 **이름·설명·함수를 그대로 꺼내 `mcp.tool()`에 등록**합니다:
 
 ```python
-# app/mcp/enterprise_rag_server.py (TODO 4 & 5 작성 코드)
+# app/mcp/enterprise_rag_server.py (TODO 3 교체 코드)
 
-# 4. 입력 스키마: 각 도구의 인자 타입 힌트(Annotated, Field)로 정의하며 FastMCP가 Pydantic으로 검증합니다.
-
-# 5. FastMCP 도구 등록
+# 4. FastMCP 도구 등록 (입력 스키마는 인자 타입 힌트 Annotated·Field로 정의하며 FastMCP가 Pydantic으로 검증)
 #    - auth:  1층 scope (이 도메인에 접근할 수 있는가)
 #    - tags:  data:* 는 데이터 도메인, class:* 는 데이터 등급 (2층 등급 규칙이 읽음)
 #    권한이 없으면 도구 목록에서 숨겨지고 호출도 거부됩니다.
-# 5-1. 사내 규정: 사내한(internal) 등급
+# 4-1. 사내 규정: 사내한(internal) 등급
 @mcp.tool(
     name="search_company_policy",
     description=(
@@ -177,7 +176,7 @@ def search_company_policy(query: str) -> str:
     return "\n\n".join([f"[{d.metadata.get('breadcrumb', '사내규정')}]:\n{d.page_content}" for d in docs])
 
 
-# 5-2. AWS 백서: 공개(public) 등급
+# 4-2. AWS 백서: 공개(public) 등급
 @mcp.tool(
     name="search_aws_guides",
     description=(
@@ -195,7 +194,7 @@ def search_aws_guides(query: str) -> str:
     return "\n\n".join([f"[{d.metadata.get('breadcrumb', 'AWS 백서')}]:\n{d.page_content}" for d in docs])
 
 
-# 5-3. 사내 ERP: 대외비(confidential) 등급 (프로젝트 상세 예산 · 인사 데이터)
+# 4-3. 사내 ERP: 대외비(confidential) 등급 (프로젝트 상세 예산 · 인사 데이터)
 @mcp.tool(
     name="search_enterprise_erp",
     description=(
@@ -214,7 +213,7 @@ def search_enterprise_erp(
     return erp_text2sql.invoke(query, context=context).to_text()
 
 
-# 5-4. 지식 그래프 탐색 도구 5종: 대외비(confidential) 등급 (결재선 · 프로젝트 예산 · 리스크)
+# 4-4. 지식 그래프 탐색 도구 5종: 대외비(confidential) 등급 (결재선 · 프로젝트 예산 · 리스크)
 #      LangChain 도구의 이름·설명·함수를 그대로 등록해 tool_rag_agent와 정의를 공유합니다.
 for graph_tool in graph_explorer_tools:
     mcp.tool(
@@ -247,7 +246,7 @@ python app/mcp/enterprise_rag_server.py --port 8010
 > ### ✅ Mission 03 완료 → 노트북 `5_MCP_and_Skills.ipynb`의 Part 3 실습 셀로 돌아가세요!
 > 1. 위 터미널에 띄운 MCP 서버(포트 8010)를 켜 둔 채로(또는 노트북의 서버 자동 기동 셀을 사용하여) 노트북 **Part 3의 코드 셀**부터 이어서 실행합니다.
 > 2. Part 3의 역할별 도구 가시성 표에서 **`partner(1개) / staff(2개) / manager(3개) / executive(8개)`** 가 정확히 출력되면 서버의 인증·인가 구현이 완벽히 성공한 것입니다!
-> 3. 이어서 내가 만든 서버를 대상으로 **Part 4(정적 바인딩)**, **Part 5(Search & Proxy)**, **Part 6.1(Skills 점진적 공개 개념)** 까지 실행한 뒤 **`missions/04_missions.md`(Mission 04)** 로 이동하세요.
+> 3. 이어서 내가 만든 서버를 대상으로 **Part 4(정적 바인딩)**, **Part 5(Search & Proxy)**, **Part 6.1(스킬 카탈로그 확인 셀)** 까지 실행한 뒤, 노트북의 안내 배너가 나오면 **`missions/04_missions.md`(Mission 04의 1\~2단계)** 로 이동하세요.
 
 ---
 
@@ -265,5 +264,5 @@ python app/mcp/enterprise_rag_server.py --port 8010
 
 - [ ] `.env`에 `ENTERPRISE_RAG_MCP_TOKEN`이 정상 설정되어 있음을 확인했다.
 - [ ] `app/mcp/enterprise_rag_server.py`에 `StaticTokenVerifier`, `ROLE_PROFILES`, `require_clearance`, `AuthMiddleware` 기반의 인증·인가 서버 인스턴스를 완성했다 (`TODO 1, 2`).
-- [ ] 검색 도구 3종(`search_company_policy`, `search_aws_guides`, `search_enterprise_erp`)과 그래프 탐색 도구 5종(`graph_*`)을 `@mcp.tool`로 등록했다 (`TODO 4, 5`).
+- [ ] 검색 도구 3종(`search_company_policy`, `search_aws_guides`, `search_enterprise_erp`)과 그래프 탐색 도구 5종(`graph_*`)을 `@mcp.tool`로 등록했다 (`TODO 3`).
 - [ ] 포트 `8010`에 FastMCP 서버를 기동하고, 노트북 Part 3의 역할별 도구 가시성 표(`partner` 1개, `staff` 2개, `manager` 3개, `executive` 8개)가 정상 출력됨을 확인했다.
