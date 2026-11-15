@@ -1,9 +1,9 @@
 """
 app/mcp/build_database.py
 =========================
-엔터프라이즈 RAG 데이터베이스 빌드 스크립트 (Mission 02)
+엔터프라이즈 RAG 데이터베이스 빌드 스크립트 (3_Vector_and_Graph_RAG & 4_Text2SQL)
 
-노트북 2_Indexing.ipynb에서 배운 파이프라인을 그대로 사용해 app/database/를 구축합니다.
+노트북 3_Vector_and_Graph_RAG.ipynb 및 4_Text2SQL.ipynb의 파이프라인을 사용해 app/database/를 구축·동기화합니다.
 비정형 문서는 형식(.md / .pdf)과 상관없이 rag.vector.indexing.index_documents()
 한 함수를 거쳐 인덱싱됩니다.
 
@@ -12,10 +12,12 @@ app/mcp/build_database.py
   aws      : data/tech_pdfs/aws_waf_series/*.pdf    → Chroma 컬렉션 'aws_waf_guides_store'
   graph    : data/graph/org_relationships.txt       → app/database/knowledge_graph_nodelink.json
   graphrag : data/graphrag/ (사전 빌드 산출물)        → app/database/graphrag/
+  erp      : data/enterprise_erp_sql/               → app/database/enterprise_erp.db (+ 시멘틱 레이어 검증)
 
 사용 예:
   python app/mcp/build_database.py                      # policy + graph (기본, 1~2분)
   python app/mcp/build_database.py --targets aws        # AWS 아키텍처 백서 4종 793페이지 (약 2~3분 소요)
+  python app/mcp/build_database.py --targets erp        # 사내 ERP SQLite DB 동기화 및 시멘틱 레이어 검증
   python app/mcp/build_database.py --targets policy --extra-docs data/new_documents
 
 빌드 결과가 마음에 들지 않으면 사전 구축본으로 되돌릴 수 있습니다:
@@ -46,6 +48,7 @@ from rag.vector.indexing import ContextualHeader, index_documents
 from rag.vector.preprocessing.presets import AWS_PDF_OPTIONS, aws_metadata
 from rag.graph.networkx_graph import build_graph_from_triplets
 from rag.graph.triplet_extractor import extract_triplets
+from rag.sql import DatabaseProfile
 
 DB_DIR = "app/database"
 CHROMA_DIR = os.path.join(DB_DIR, "chroma_db")
@@ -127,10 +130,21 @@ def sync_graphrag():
     print(f"  ✅ {dst}")
 
 
+def sync_erp():
+    src = "data/enterprise_erp_sql/enterprise_erp.db"
+    dst = os.path.join(DB_DIR, "enterprise_erp.db")
+    yaml_path = "data/enterprise_erp_sql/semantic_layer.yaml"
+    print("📦 [erp] 사내 ERP SQLite DB 동기화 및 시멘틱 레이어 무결성 검증")
+    os.makedirs(DB_DIR, exist_ok=True)
+    shutil.copy2(src, dst)
+    profile = DatabaseProfile.load(yaml_path, db_path=dst)
+    print(f"  ✅ {dst}: 테이블 {len(profile.tables)}개, 표준 지표 {len(profile.metrics)}개 검증 완료")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Enterprise RAG database builder")
     parser.add_argument("--targets", nargs="+", default=["policy", "graph"],
-                        choices=["policy", "aws", "graph", "graphrag"], help="빌드할 대상")
+                        choices=["policy", "aws", "graph", "graphrag", "erp"], help="빌드할 대상")
     parser.add_argument("--extra-docs", nargs="*", default=[],
                         help="policy 컬렉션에 함께 인덱싱할 추가 문서 폴더 (.md / .pdf)")
     args = parser.parse_args()
@@ -141,6 +155,7 @@ if __name__ == "__main__":
         "aws": build_aws,
         "graph": build_graph,
         "graphrag": sync_graphrag,
+        "erp": sync_erp,
     }
     for target in args.targets:
         builders[target]()

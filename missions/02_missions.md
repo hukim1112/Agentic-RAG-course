@@ -1,254 +1,225 @@
-# 🎯 Mission 02: 인증·인가된 Enterprise RAG FastMCP 서버 구축 및 기동
+# 🎯 Mission 02: Tool RAG Agent 서비스 조립 및 UI 검증
 
-본 미션은 `notebooks/3_MCP_and_Skills.ipynb`의 Part 1\~3에서 학습한 **FastMCP 프레임워크와 2층 인가(Authorization) 아키텍처**를 바탕으로,  
-사내 4대 데이터베이스(규정집, AWS 아키텍처 백서, 사내 ERP, 전사 지식 그래프)를 **Bearer 토큰 인증과 역할·등급별 접근 제어가 적용된 독립 마이크로서비스 서버(`app/mcp/enterprise_rag_server.py`)**로 직접 구현하고 기동하는 실습 과제입니다.
+본 미션은 `notebooks/2_Agentic_RAG.ipynb`에서 학습한 ReAct 검색 에이전트를 **프로덕션 서비스 패키지(`app/agents/tool_rag_agent/`)로 직접 조립**하고,  
+FastAPI 백엔드 서버와 Chainlit 채팅 UI 환경에서 가동하여 **에이전트의 도구 선택, 멀티스텝 호출 과정, SQLite 영구 기억 유지**를 직접 검증하는 실습 과제입니다.
 
 ---
 
 ## 📂 실습 대상 및 핵심 파일
 
-* **MCP 서버 구현 파일 (TODO 작성 대상)**: `app/mcp/enterprise_rag_server.py`  
-  👉 **이 파일의 `TODO 1, 2`(인증·인가 프로바이더 및 서버 생성)와 `TODO 4, 5`(4대 DB 도구 등록)를 완성하세요!**
-* **사전 구축된 4대 데이터베이스 (제공)**: `app/database/`
-  - `chroma_db/`: 사내 규정(`enterprise_policy_store`, 239청크) 및 AWS Well-Architected 백서(`aws_waf_guides_store`, 4,641청크)
-  - `enterprise_erp.db`: 사내 ERP 정형 데이터베이스 (SQLite, 6개 테이블 — `Text2SQL` 연동)
-  - `graphrag/`: Microsoft GraphRAG 전사 지식 그래프 인덱스 (`rag/graph/graph_explorer.py`의 탐색 도구 5종 연동)
-* **연계 학습 노트북**: `notebooks/3_MCP_and_Skills.ipynb`
+* **에이전트 조립 파일 (TODO 작성 대상)**: `app/agents/tool_rag_agent/agent.py`  
+  👉 **이 파일의 `create_agent_executor()`를 완성하세요!**
+* **검색 도구 (제공)**: `app/agents/tool_rag_agent/tools.py`의 `tools_tool_rag` — 노트북 Part 4에서 다룬 4대 데이터 소스용 도구:
+  - `search_company_policy`: 사내 5대 공식 규정집 검색 (Vector + BM25 Hybrid)
+  - `search_aws_guides`: AWS Well-Architected 4대 아키텍처 백서 검색 (Vector + BM25 Hybrid)
+  - `search_enterprise_erp`: 사내 ERP 정형 데이터베이스 조회 (Text2SQL)
+  - 지식 그래프 탐색 도구 5종 (GraphRAG 인덱스): `graph_find_entities`(엔티티 연결), `graph_neighbors`(관계 펼치기), `graph_find_path`(경로 찾기), `graph_search_communities`(커뮤니티 리포트 검색), `graph_read`(원문 확인)
+* **시스템 프롬프트 (제공)**: `app/agents/tool_rag_agent/prompt.py` — ReAct 판단 원칙 및 답변 가이드라인
+* **실행 엔트리포인트 (제공)**:
+  - 백엔드 서버: `app/server.py` (FastAPI, 포트 8000)
+  - 웹 채팅 UI: `app/chainlit_ui.py` (Chainlit, 포트 8080)
+* **사전 학습 노트북**: `notebooks/2_Agentic_RAG.ipynb`
 
 ---
 
 ## 📋 미션 목표
 
-1. **[미션 2-1] 인증 토큰(`.env`) 점검 및 생성**:
-   - 사내 MCP 서버 전용 Bearer 토큰(`ENTERPRISE_RAG_MCP_TOKEN`)이 환경 변수에 설정되어 있는지 확인합니다.
-2. **[미션 2-2] FastMCP 토큰 인증기 및 2층 인가 미들웨어 구축 (`TODO 1, 2`)**:
-   - `StaticTokenVerifier`에 에이전트 서비스 계정 토큰과 역할별 테스트 토큰(`:partner`, `:staff`, `:manager`, `:executive`)을 등록하고, 데이터 등급 규칙 `require_clearance`를 서버 전역 `AuthMiddleware`로 연결합니다.
-3. **[미션 2-3] 4대 데이터베이스 MCP 도구 노출 (`TODO 4, 5`)**:
-   - 검색 도구 3종(`search_company_policy`, `search_aws_guides`, `search_enterprise_erp`)과 지식 그래프 탐색 도구 5종(`graph_*`)을 도메인 scope(`require_scopes("<도메인>:read")`)와 데이터 등급 태그(`tags={"data:*", "class:*"}`)와 함께 등록합니다.
-4. **[미션 2-4] MCP 서버 기동 및 노트북 Part 3\~5 연동 확인**:
-   - 포트 `8010`에 서버를 띄우고, `notebooks/3_MCP_and_Skills.ipynb`의 역할별 도구 가시성 테스트(Part 3)와 에이전트 연결 실습(Part 4\~5)을 내가 만든 서버로 실행합니다.
-
----
-
-## 🧭 전체 진행 흐름 (노트북 3과 함께 진행)
-
-| 순서 | 단계 | 수행 위치 |
-| :---: | :--- | :--- |
-| ① | **Part 1\~2 & Part 3(이론)**: MCP 개념, FastMCP 스키마 검증, 인증/인가 2층 구조 이해 | `notebooks/3_MCP_and_Skills.ipynb` |
-| ② | **🎯 Mission 02 (현재 문서)**: 토큰 확인 → `enterprise_rag_server.py` TODO 완성 → 서버 기동 | **이 문서 1\~4단계** |
-| ③ | **Part 3(실습)\~Part 6.1**: 역할별 가시성 검증, 정적 바인딩, Search & Proxy, Skills 개념 | `notebooks/3_MCP_and_Skills.ipynb` |
-| ④ | **🎯 Mission 03**: CLI 보안 검증 → `mcp_servers.json` 등록 → Chainlit에서 `skill_rag_agent` 비교 | `missions/03_missions.md` |
+1. **[미션 2-1] 환경 확인 및 서버/UI 가동**:
+   - 필수 API 키를 점검하고, FastAPI 백엔드와 Chainlit UI를 띄워 Mission 01에서 만든 베이스 에이전트(`file_rag_agent`)와의 통신을 확인합니다.
+2. **[미션 2-2] Tool RAG Agent 완성 (`agent.py`)**:
+   - `AsyncSqliteSaver` 기반의 SQLite 영구 세션 메모리를 구축하고, LLM과 4대 검색 도구를 바인딩한 에이전트 팩토리 함수를 구현합니다.
+3. **[미션 2-3] 웹 UI 단계별 시나리오 검증**:
+   - Chainlit UI에서 `tool_rag_agent`를 선택하고, 단일 규정 검색, 멀티홉 그래프+규정 추론, 아키텍처 영역(Pillar)별 비교, ERP 정형 데이터 조회, 대화 맥락 기억(세션 영속성)을 차례로 검증합니다.
+4. **[심화 2-4] 도구 설명(Docstring) 변경 실험**:
+   - 도구 설명문이 에이전트의 자율적 판단(도구 및 인자 선택)에 미치는 영향을 직접 관찰합니다.
 
 ---
 
 ## 🛠️ 단계별 수행 가이드
 
-### 1단계: 인증 토큰 (.env) 확인 및 생성 (미션 2-1)
+### 1단계: 환경 변수 (.env) 확인
 
-터미널(WSL 환경)에서 사내 MCP 서버 전용 Bearer 토큰이 `.env`에 설정되어 있는지 확인합니다:
+터미널(WSL 환경)에서 에이전트 실행에 필요한 필수 API 키와 UI 시크릿이 정상 등록되어 있는지 확인합니다:
 
 ```bash
-# 토큰 환경변수 등록 여부 확인 (값은 마스킹되어 변수명만 출력됨)
-grep -E '^ENTERPRISE_RAG_MCP_TOKEN=' .env | cut -d= -f1
+# 필수 환경 변수 등록 여부 점검 (값은 마스킹되어 이름만 출력됨)
+grep -E '^(OPENAI_API_KEY|GOOGLE_API_KEY|CHAINLIT_AUTH_SECRET)=' .env | cut -d= -f1
 ```
 
-> 💡 **`ENTERPRISE_RAG_MCP_TOKEN`이 출력되지 않는 경우**: 아래 명령어를 실행하여 32바이트 난수 토큰을 생성해 `.env`에 추가하세요:
-> ```bash
-> echo "ENTERPRISE_RAG_MCP_TOKEN=$(python -c 'import secrets; print(secrets.token_urlsafe(32))')" >> .env
-> ```
+> 💡 **출력 확인**: 위 3개 키 이름이 모두 출력되어야 합니다. 누락된 항목이 있다면 `.env` 파일을 열어 설정하세요.
 
 ---
 
-### 2단계: FastMCP 인증기 및 서버 인스턴스 생성 (미션 2-2)
+### 2단계: 서버와 Chainlit UI 실행 (미션 2-1)
 
-`app/mcp/enterprise_rag_server.py` 파일을 열고, **TODO 1과 TODO 2**를 완성합니다.
+터미널 2개를 열어 각각 백엔드 서버와 프론트엔드 UI를 구동합니다:
 
-> 📌 **시작 상태 확인**:  
-> 파일 상단에는 `FastMCP`, `AuthContext`, `require_scopes`, `StaticTokenVerifier`, `AuthMiddleware` 등의 import 문이 이미 준비되어 있고, 중간(3번 섹션)에는 DB 및 검색기 로딩 코드가 작성되어 있습니다.  
-> 파일의 **`TODO 1` ~ `TODO 2` 구간(`verifier = None  # TODO` 및 `mcp = None  # TODO`)을 아래 코드로 교체**하세요.  
-> *(TODO 2를 완성하기 전에 서버를 실행하면 `❌ TODO 1, 2를 먼저 완성하세요.` 메시지와 함께 종료됩니다.)*
+#### 🖥️ 터미널 1 (FastAPI 백엔드 가동 - 포트 8000):
+```bash
+python app/server.py
+```
+**성공 콘솔 출력 예시:**
+```text
+Loading .env from: .../.env
+📈 LangSmith Tracing Enabled. Project: llmops-agent-server
+INFO:     Started server process [12345]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+```
+
+#### 🌐 터미널 2 (Chainlit 웹 채팅 UI 가동 - 포트 8080):
+```bash
+chainlit run app/chainlit_ui.py --port 8080
+```
+**성공 콘솔 출력 예시:**
+```text
+Your app is available at http://localhost:8080
+```
+
+#### 🧪 기본 통신 테스트:
+1. 웹 브라우저에서 `http://localhost:8080` 접속
+2. 로그인 화면에서 아이디: `user`, 비밀번호: `1234` 입력 후 로그인
+3. 좌측 상단 프로필에서 Mission 01에서 구축한 베이스 에이전트 **`file_rag_agent`** 를 선택하고 `"안녕하세요!"`라고 전송하여 실시간 SSE 스트리밍 통신이 원활한지 확인합니다.
+
+> 💡 `app/server.py`는 `app/agents/` 폴더 하위를 자동으로 스캔하여 `create_agent_executor()`를 노출하는 에이전트를 동적으로 등록합니다.
+
+---
+
+### 3단계: `agent.py` 완성하기 (미션 2-2)
+
+`app/agents/tool_rag_agent/agent.py` 파일을 열고, `create_agent_executor()` 함수를 완성합니다.
+
+> 📝 **시작 상태**: import 문과 `AGENT_METADATA`는 이미 작성되어 있고, `create_agent_executor()` 안에는 `TODO 1~3` 주석과 `raise NotImplementedError(...)`만 있습니다.  
+> 아래 코드의 함수 본문으로 **TODO 주석과 `raise NotImplementedError` 줄을 교체**하세요. (파일 전체를 아래 코드로 바꿔도 됩니다.)
+
+노트북 `2_Agentic_RAG.ipynb`의 Part 5에서 실습한 에이전트 조립 구조를 따르되, 서버가 재시작되어도 사용자와의 대화 기록이 영구 보존되도록 **`InMemorySaver` 대신 `AsyncSqliteSaver`**를 체크포인터로 연결합니다:
 
 ```python
-# app/mcp/enterprise_rag_server.py (TODO 1 & 2 교체 코드)
+# app/agents/tool_rag_agent/agent.py
 
-# 1. 인증기: 토큰마다 '무엇을 할 수 있나(scopes)'와 '누구인가(role, department, clearance)'를 등록
-SERVER_TOKEN = os.getenv("ENTERPRISE_RAG_MCP_TOKEN")
-if not SERVER_TOKEN:
-    sys.exit("❌ .env에 ENTERPRISE_RAG_MCP_TOKEN이 없습니다. 토큰을 설정한 뒤 다시 실행하세요.")
+import os
+import aiosqlite
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+from langchain.agents import create_agent
+from app.utils import init_chat_model
+from app.utils.context import AgentContext
 
-# 역할별 권한 프로필. 운영 환경에서는 IdP가 사용자마다 JWT를 발급하고, 같은 정보가 JWT claim으로 들어옵니다.
-#   - scopes:    도메인 접근권 (<도메인>:<동작>)
-#   - clearance: 열람 가능한 최고 데이터 등급 (정보보안관리지침의 4등급)
-ROLE_PROFILES = {
-    "partner":   {"client_id": "user-partner",   "role": "partner",   "department": "외부협력사",
-                  "clearance": "public",       "scopes": ["docs:read"]},
-    "staff":     {"client_id": "user-staff",     "role": "staff",     "department": "AgenticAI팀",
-                  "clearance": "internal",     "scopes": ["docs:read"]},
-    "manager":   {"client_id": "user-manager",   "role": "manager",   "department": "경영기획팀",
-                  "clearance": "confidential", "scopes": ["docs:read", "erp:read"]},
-    "executive": {"client_id": "user-executive", "role": "executive", "department": "AI혁신본부",
-                  "clearance": "secret",       "scopes": ["docs:read", "erp:read", "graph:read"]},
+from .prompt import TOOL_RAG_SYSTEM_PROMPT
+from .tools import tools_tool_rag
+
+AGENT_METADATA = {
+    "name": "tool_rag_agent",
+    "description": "4대 DB 검색 도구를 직접 바인딩한 ReAct 기반 Agentic RAG 에이전트",
 }
 
-# 개발용 StaticTokenVerifier: 등록한 dict 전체가 토큰의 claims가 됩니다.
-#   - 기본 토큰: 에이전트 서비스 계정 (모든 도구 사용)
-#   - '<기본 토큰>:<역할>': 역할별 테스트 토큰
-verifier = StaticTokenVerifier(
-    tokens={
-        SERVER_TOKEN: {"client_id": "enterprise-rag-agent", "role": "service", "department": "AI혁신본부",
-                       "clearance": "confidential", "scopes": ["docs:read", "erp:read", "graph:read"]},
-        **{f"{SERVER_TOKEN}:{name}": profile for name, profile in ROLE_PROFILES.items()},
-    }
-)
 
-# 데이터 등급 (낮음 → 높음). 정보보안관리지침의 공개 · 사내한 · 대외비 · 극비
-CLEARANCE_LEVELS = ["public", "internal", "confidential", "secret"]
+async def create_agent_executor(checkpointer=None):
+    """Tool RAG Agent 팩토리 함수:
+    1. LLM 초기화 (gemini-3.8-flash)
+    2. SQLite 기반 비동기 체크포인터 설정 (app/database/checkpoints.db)
+    3. 4대 검색 도구가 바인딩된 ReAct 에이전트 생성
+    """
+    # 1. LLM 설정 (창의성 억제 및 정확한 사실 검색을 위해 temperature=0.0)
+    llm = init_chat_model(model="gemini-3.8-flash", temperature=0.0)
 
+    # 2. AsyncSqliteSaver 기반 영구 체크포인터 (세션 히스토리 영속화)
+    conn = None
+    if checkpointer is None:
+        db_dir = "app/database"
+        os.makedirs(db_dir, exist_ok=True)
+        checkpoints_path = os.path.join(db_dir, "checkpoints.db")
 
-# 사용자 정의 인가 규칙: AuthContext(검증된 토큰 + 접근하려는 도구)를 받아 허용 여부를 반환
-def require_clearance(ctx: AuthContext) -> bool:
-    """도구의 데이터 등급(class:* 태그)이 사용자의 열람 등급(clearance claim) 이하일 때만 통과합니다."""
-    if ctx.token is None:
-        return False
-    tool_class = next((tag.split(":", 1)[1] for tag in ctx.component.tags if tag.startswith("class:")), None)
-    if tool_class not in CLEARANCE_LEVELS:   # 등급이 없거나 모르는 등급의 도구는 막습니다 (fail-closed)
-        return False
-    user_clearance = ctx.token.claims.get("clearance", "public")
-    return CLEARANCE_LEVELS.index(tool_class) <= CLEARANCE_LEVELS.index(user_clearance)
+        conn = await aiosqlite.connect(checkpoints_path, check_same_thread=False)
+        await conn.execute("PRAGMA journal_mode=WAL;")
+        await conn.execute("PRAGMA busy_timeout=5000;")
+        checkpointer = AsyncSqliteSaver(conn)
+        await checkpointer.setup()
 
-
-# 2. FastMCP 서버 인스턴스 생성
-#    - auth: 토큰 없는 요청은 401로 차단
-#    - AuthMiddleware: 모든 도구에 등급 규칙(require_clearance)을 적용하는 서버 전역 정책
-mcp = FastMCP(
-    name="Enterprise-RAG-Server",
-    instructions="사내 규정집, AWS 아키텍처 백서, 전사 지식 그래프(GraphRAG) 및 사내 ERP(Text2SQL)를 제공하는 통합 RAG 서버",
-    auth=verifier,
-    middleware=[AuthMiddleware(auth=require_clearance)],
-)
+    # 3. 4대 검색 도구와 ReAct 시스템 프롬프트를 바인딩한 에이전트 생성
+    tool_rag_agent = create_agent(
+        model=llm,
+        tools=tools_tool_rag,
+        system_prompt=TOOL_RAG_SYSTEM_PROMPT,
+        checkpointer=checkpointer,
+        context_schema=AgentContext,
+    )
+    tool_rag_agent.checkpointer_conn = conn
+    return tool_rag_agent
 ```
+
+> ⚠️ **주의**: `create_agent_executor()`를 수정한 후에는 **터미널 1의 FastAPI 서버(`server.py`)를 재시작(`Ctrl + C` 후 재실행)**해야 새 에이전트 코드가 서버 런타임에 반영됩니다.
 
 ---
 
-### 3단계: 4대 데이터베이스 MCP 도구 구현 (미션 2-3)
+### 4단계: 웹 UI에서 단계별 시나리오 검증 (미션 2-3)
 
-이어서 `app/mcp/enterprise_rag_server.py` 하단의 **TODO 4(스키마 정의)와 TODO 5(검색 도구 3종 + 그래프 탐색 도구 5종)**를 완성합니다.
+터미널 1을 재시작한 후, Chainlit 웹 화면(`http://localhost:8080`)을 새로고침하고 좌측 상단 프로필 선택창에서 **`tool_rag_agent`**를 선택합니다.
 
-> 📌 **붙여넣을 위치**: 아래 코드 블록 전체를 `TODO 4` · `TODO 5` 주석 아래, **`if __name__ == "__main__":` 줄 바로 위**에 붙여넣으세요.  
-> `@mcp.tool` 데코레이터는 2단계에서 만든 `mcp` 인스턴스를 사용하므로 반드시 2단계를 먼저 작성해야 합니다.
+아래 5가지 시나리오 질문을 차례로 전송하고, Chainlit 메시지 창 상단에 표시되는 **도구 호출 접기/펼치기 박스(Tool Calls)**를 클릭하여 에이전트의 ReAct 추론 과정을 관찰하세요:
 
-각 도구에는 **두 층의 인가**가 적용됩니다:
-- **1층 (도메인 접근권)**: 각 도구의 `auth=require_scopes("<도메인>:read")`가 토큰의 `scopes`를 검사합니다.
-- **2층 (데이터 보안 등급)**: 각 도구의 `tags={"class:<등급>"}`을 서버 전역 미들웨어(`require_clearance`)가 읽어 토큰의 `clearance` 등급과 비교합니다.
+#### 🧪 [시나리오 1] 단일 규정 검색 (`search_company_policy`)
+- **질문**: `"팀원이 당일 출장을 가면 일비와 식비는 얼마를 받나요?"`
+- **도구 호출 관찰**:
+  - `search_company_policy` 1회 호출 (예: `query='당일 출장 일비 식비 팀원 지급 기준'`)
+- **기대 답변 핵심** (국내 여비 규정 제15조):
+  - 일비: 팀원 기준액 25,000원의 50% → **12,500원**
+  - 식비: 당일 출장은 1식 → **12,000원**
 
-| 도구 | 부여할 `tags` | 요구할 `scope` | 접근 가능한 역할 (`partner` / `staff` / `manager` / `executive`) |
-| :--- | :--- | :--- | :--- |
-| `search_aws_guides` | `data:docs`, `class:public` | `docs:read` | 전원 (`partner`, `staff`, `manager`, `executive`) |
-| `search_company_policy` | `data:docs`, `class:internal` | `docs:read` | 사내 직원 이상 (`staff`, `manager`, `executive`) |
-| `search_enterprise_erp` | `data:erp`, `class:confidential` | `erp:read` | 팀장 이상 (`manager`, `executive`) |
-| `graph_*` 탐색 도구 5종 | `data:graph`, `class:confidential` | `graph:read` | 임원 (`executive`) 및 에이전트 서비스 계정 |
+#### 🧪 [시나리오 2] 멀티홉 프로젝트 참여자 조회 + 여비 규정 결합 (`search_enterprise_erp` / `graph_*` + `search_company_policy`)
+- **질문**: `"인프라엔지니어링팀에서 P-01 프로젝트에 참여 중인 직원은 누구이고, 그 직원의 직급 기준 부산 1박 2일 출장 시 숙박비 한도와 일비 총액은 얼마인가요?"`
+- **도구 호출 관찰 (Multi-step ReAct Loop)**:
+  1. `search_enterprise_erp` 또는 그래프 탐색(`graph_find_entities` → `graph_neighbors`) ➔ `인프라엔지니어링팀`에서 `P-01` 프로젝트에 참여 중인 직원(`강엔지니어 선임`, `최유진 선임`)과 직급(`선임` = 팀원급) 파악
+  2. `search_company_policy` (숙박비 및 일비 기준 검색) ➔ 국내외 출장 및 여비 지급 규정 제14조(숙박비)와 제15조(일비)를 각각 확인
+- **기대 답변 핵심**:
+  - 참여 직원: **강엔지니어 선임, 최유진 선임** *(ERP 조회 시 2명 전원 확인 / 지식 그래프 단독 조회 시 핵심 파견 인력인 **강엔지니어 선임** 확인 — 모두 인프라엔지니어링팀 `선임` 직급으로 팀원급 기준 동일)*
+  - 부산 1박 숙박비 한도: 광역시 팀원(선임/전임) 기준 **1박당 80,000원** (제14조)
+  - 1박 2일 일비 총액: 팀원(선임/전임) 1일 25,000원 × 2일 = **50,000원** (제15조)
+  - 💡 사내 규정 문서에는 없는 **프로젝트 참여 직원 및 직급 정보**를 먼저 다른 소스(ERP/Graph)에서 찾고, 그 결과(`선임`)를 바탕으로 여비 규정의 직급별 표(제14조, 제15조)를 조회하는 **멀티홉 추론**이 핵심 관찰 포인트입니다.
 
-지식 그래프 도구 5종(`graph_find_entities`, `graph_neighbors`, `graph_find_path`, `graph_search_communities`, `graph_read`)은 `rag/graph/graph_explorer.py`에 LangChain 도구로 이미 정의되어 있으므로, 중복 작성 없이 **이름·설명·함수를 그대로 꺼내 `mcp.tool()`에 등록**합니다:
+#### 🧪 [시나리오 3] 아키텍처 영역별 비교 검색 (`search_aws_guides`) 및 정형 ERP 조회 (`search_enterprise_erp`)
+- **질문 A (AWS 백서 영역 비교)**: `"AWS Well-Architected 백서에서 성능 효율성(Performance Efficiency) 영역과 비용 최적화(Cost Optimization) 영역의 컴퓨팅 리소스 선택 모범 사례를 각각 찾아 비교해줘."`
+  - **도구 호출 관찰**:
+    - `search_aws_guides(query='Performance Efficiency 컴퓨팅 리소스 선택 모범 사례')` 호출
+    - `search_aws_guides(query='Cost Optimization 컴퓨팅 리소스 선택 비용 최적화 모범 사례')` 호출
+    - 👉 아키텍처 영역을 나누어 2번 호출하여 각각의 모범 사례를 검색함을 확인!
+- **질문 B (정형 ERP DB Text2SQL 조회)**: `"사내 ERP에서 AgenticAI팀이 수행하는 프로젝트의 총예산과 현재까지 승인된 지출 합계를 조회해줘."`
+  - **도구 호출 관찰**:
+    - `search_enterprise_erp(query='AgenticAI팀 수행 프로젝트 총예산 및 승인 지출 합계')` 호출
+    - 👉 자연어 질문이 SQL(`SELECT ...`)로 변환되어 실행된 결과 표와 수치를 정확히 답변함을 확인!
+
+#### 🧪 [시나리오 4] 세션 맥락 유지 질의 (Conversational Continuity)
+- **질문 (시나리오 3의 질문 A에 이어서 같은 대화창에서 전송)**: `"그럼 신뢰성(Reliability) 영역에서는 어떤 설계 원칙을 강조해?"`
+- **도구 호출 관찰**:
+  - `search_aws_guides(query='Reliability Pillar Design principles 신뢰성 설계 원칙')` 호출
+- **기대 답변 핵심**:
+  - 사용자가 "AWS Well-Architected 백서"를 생략했지만, 체크포인터에 저장된 직전 대화를 기억하여 **AWS 신뢰성(`Reliability`) 백서**의 설계 원칙을 검색해 답변.
+
+#### 🧪 [시나리오 5] 범용 일상 대화 (Zero-Tool Fallback)
+- **질문**: `"안녕! 넌 뭘 할 수 있어?"`
+- **도구 호출 관찰**:
+  - 도구 호출 전혀 없음 (Zero Tool Calls)
+- **기대 답변 핵심**:
+  - 불필요한 DB 검색 없이 ReAct 에이전트 시스템 프롬프트와 바인딩된 4대 전문 검색 영역(사내 규정, AWS 아키텍처 가이드, 전사 지식 그래프, 사내 ERP)을 친절하게 소개.
+
+---
+
+### 5단계: 도구 설명(Docstring) 변경 실험 (심화 2-4)
+
+프롬프트 엔지니어링만큼 강력한 **도구 설명(Tool Description)의 파급 효과**를 실험합니다.
+
+`rag/graph/graph_explorer.py` 파일을 열고, `graph_find_entities` 도구의 docstring을 아래처럼 모호한 한 줄로 **임시 변경**해 보세요. 원래 설명에는 "그래프 탐색의 시작점이며, 엔티티 이름이 영문이므로 한국어 이름도 이 도구로 먼저 연결하라"는 지침과 반환 형태(E번호)가 들어 있습니다. (원래 docstring은 메모장에 복사해 두세요.)
 
 ```python
-# app/mcp/enterprise_rag_server.py (TODO 4 & 5 작성 코드)
-
-# 4. 입력 스키마: 각 도구의 인자 타입 힌트(Annotated, Field)로 정의하며 FastMCP가 Pydantic으로 검증합니다.
-
-# 5. FastMCP 도구 등록
-#    - auth:  1층 scope (이 도메인에 접근할 수 있는가)
-#    - tags:  data:* 는 데이터 도메인, class:* 는 데이터 등급 (2층 등급 규칙이 읽음)
-#    권한이 없으면 도구 목록에서 숨겨지고 호출도 거부됩니다.
-# 5-1. 사내 규정: 사내한(internal) 등급
-@mcp.tool(
-    name="search_company_policy",
-    description=(
-        "사내 5대 공식 규정 문서(국내여비교통비지급규정, 인사복무규정, 정보보안관리지침, 전사위임전결및예산집행규정, 클라우드및GPU인프라운영지침)에서 "
-        "출장비 기준, 인사·징계 양정, 보안 반출 절차, 금액별 전결 기준, GPU 유휴 회수 규정 등 사내 제도·원칙 조항을 검색합니다.\n\n"
-        "반환 형태: 검색된 조항의 앞뒤 문맥이 결합된 본문과 함께 상단에 [문서 전체 목차(TOC)] 및 [현재 위치 경로(Breadcrumb)]가 포함된 텍스트를 반환합니다."
-    ),
-    auth=require_scopes("docs:read"),
-    tags={"data:docs", "class:internal"},
-)
-def search_company_policy(query: str) -> str:
-    docs = policy_retriever.search(query, top_k=2)
-    if not docs:
-        return f"'{query}' 관련 사내 규정을 찾지 못했습니다."
-    return "\n\n".join([f"[{d.metadata.get('breadcrumb', '사내규정')}]:\n{d.page_content}" for d in docs])
-
-
-# 5-2. AWS 백서: 공개(public) 등급
-@mcp.tool(
-    name="search_aws_guides",
-    description=(
-        "AWS Well-Architected Framework 4대 아키텍처 백서(Security, Reliability, Performance Efficiency, Cost Optimization)에서 "
-        "클라우드 설계 원칙, 모범 사례(Best Practice), 흔한 안티패턴(Common anti-patterns), 구현 지침을 검색합니다.\n\n"
-        "반환 형태: 검색된 모범 사례의 앞뒤 문맥이 결합된 본문과 함께 상단에 [문서 전체 목차(TOC)] 및 [현재 위치 경로(Breadcrumb)]가 포함된 텍스트를 반환합니다."
-    ),
-    auth=require_scopes("docs:read"),
-    tags={"data:docs", "class:public"},
-)
-def search_aws_guides(query: str) -> str:
-    docs = aws_retriever.search(query, top_k=2)
-    if not docs:
-        return f"'{query}' 관련 AWS 아키텍처 백서를 찾지 못했습니다."
-    return "\n\n".join([f"[{d.metadata.get('breadcrumb', 'AWS 백서')}]:\n{d.page_content}" for d in docs])
-
-
-# 5-3. 사내 ERP: 대외비(confidential) 등급 (프로젝트 상세 예산 · 인사 데이터)
-@mcp.tool(
-    name="search_enterprise_erp",
-    description=(
-        "사내 ERP 정형 데이터베이스(부서 마스터, 임직원 명부, 전략 프로젝트 및 투입 인력, 프로젝트 지출 결의 전표, "
-        "GPU 클러스터 할당·가동률 대장, 부서별·비목별 운영 예산 원장)에서 실시간 수치와 현황 레코드를 조회합니다.\n"
-        "query에는 SQL 문이 아니라 자연어 질문을 넣으세요. SQL은 이 도구가 스키마를 보고 직접 생성합니다.\n\n"
-        "반환 형태: 자연어 질의를 변환해 실행한 SELECT SQL 쿼리문, 적용한 해석 가정, 조회된 결과 마크다운 표(컬럼명 및 행 데이터)를 반환합니다."
-    ),
-    auth=require_scopes("erp:read"),
-    tags={"data:erp", "class:confidential"},
-)
-def search_enterprise_erp(
-    query: Annotated[str, Field(description="조회하려는 내용을 담은 자연어 질문 (SQL 문 아님). 예: 'AgenticAI팀 프로젝트별 승인 예산'")],
-    context: Annotated[str, Field(description="사내 규정 등에서 먼저 확인한 참고 기준값 (선택)")] = "",
-) -> str:
-    return erp_text2sql.invoke(query, context=context).to_text()
-
-
-# 5-4. 지식 그래프 탐색 도구 5종: 대외비(confidential) 등급 (결재선 · 프로젝트 예산 · 리스크)
-#      LangChain 도구의 이름·설명·함수를 그대로 등록해 tool_rag_agent와 정의를 공유합니다.
-for graph_tool in graph_explorer_tools:
-    mcp.tool(
-        name=graph_tool.name,
-        description=graph_tool.description,
-        auth=require_scopes("graph:read"),
-        tags={"data:graph", "class:confidential"},
-    )(graph_tool.func)
+# graph_explorer.py - graph_find_entities 내부 (실험용 임시 변경)
+"""지식 그래프에서 엔티티를 찾습니다."""
 ```
 
-> 💡 `@mcp.tool(...)`은 데코레이터이므로 `mcp.tool(...)(함수)`처럼 함수 호출 형태로도 사용할 수 있습니다. 인자 설명(`Annotated[..., Field(description=...)]`)은 `graph_tool.func`의 타입 힌트에 이미 들어 있어 FastMCP가 그대로 입력 스키마로 변환합니다.
-
----
-
-### 4단계: FastMCP 서버 기동 확인 (미션 2-4)
-
-새 터미널을 열어 작성한 FastMCP 서버가 오류 없이 기동되는지 확인합니다:
-
-```bash
-python app/mcp/enterprise_rag_server.py --port 8010
-```
-
-**성공 콘솔 출력:**
-```text
-🚀 Enterprise RAG FastMCP 서버 시작 (포트: 8010, Bearer 인증 + 도구별 인가 활성화)...
-```
-
----
-
-> [!IMPORTANT]
-> ### ✅ Mission 02 완료 → 노트북 `3_MCP_and_Skills.ipynb`의 Part 3 실습 셀로 돌아가세요!
-> 1. 위 터미널에 띄운 MCP 서버(포트 8010)를 켜 둔 채로(또는 노트북의 서버 자동 기동 셀을 사용하여) 노트북 **Part 3의 코드 셀**부터 이어서 실행합니다.
-> 2. Part 3의 역할별 도구 가시성 표에서 **`partner(1개) / staff(2개) / manager(3개) / executive(8개)`** 가 정확히 출력되면 서버의 인증·인가 구현이 완벽히 성공한 것입니다!
-> 3. 이어서 내가 만든 서버를 대상으로 **Part 4(정적 바인딩)**, **Part 5(Search & Proxy)**, **Part 6.1(Skills 점진적 공개 개념)** 까지 실행한 뒤 **`missions/03_missions.md`(Mission 03)** 로 이동하세요.
+1. 터미널 1의 서버를 재시작합니다.
+2. Chainlit UI에서 시나리오 2번 질문 또는 `"AgenticAI팀이 총괄하는 프로젝트의 예산과 승인권자는?"`을 전송합니다.
+3. **결과 비교 관찰**:
+   - 도구 설명에 **언제 이 도구를 먼저 써야 하고 무엇을 돌려받는지(E번호)**가 빠져 있을 때, 에이전트가 엔티티 연결부터 시작하나요, 아니면 한국어 이름을 `graph_neighbors`에 바로 넣었다가 후보 목록을 받고 헤매나요? 도구 호출 횟수를 비교해 보세요.
+4. **실험 완료 후**: 삭제했던 docstring을 반드시 원래대로 복구하고 서버를 재시작하세요.
 
 ---
 
@@ -256,15 +227,20 @@ python app/mcp/enterprise_rag_server.py --port 8010
 
 | 증상 / 오류 메시지 | 원인 | 해결 방법 |
 | :--- | :--- | :--- |
-| `❌ TODO 1, 2를 먼저 완성하세요.` | `mcp = None` 상태가 그대로 남아 있음 | 2단계의 `verifier = StaticTokenVerifier(...)` 및 `mcp = FastMCP(...)` 코드로 `TODO 1, 2`를 교체했는지 확인 |
-| `AttributeError: 'NoneType' object has no attribute 'tool'` | `mcp = FastMCP(...)`보다 `@mcp.tool`이 먼저 실행되었거나 `mcp = None`이 아래쪽에 남아 있음 | 2단계에서 `mcp = None  # TODO` 줄을 삭제하고 `mcp = FastMCP(...)`로 교체했는지 확인 |
-| `Address already in use (:8010)` | 이전 FastMCP 서버 프로세스가 이미 포트 8010을 점유 중 | `lsof -ti:8010 \| xargs -r kill -9` 또는 `pkill -f enterprise_rag_server` 실행 후 재기동 |
+| `Address already in use (:8000 또는 :8080)` | 이전 프로세스가 정상 종료되지 않고 포트를 점유 중 | WSL 터미널에서 `lsof -ti:8000 \| xargs -r kill -9` 또는 포트 번호를 변경하여 실행 (`--port 8001`) |
+| `sqlite3.OperationalError: database is locked` | SQLite DB 파일에 동시 접근 락이 걸림 | `pkill -f "python app/server.py"`로 모든 서버 프로세스를 종료한 후, `rm -f app/database/checkpoints.db*` 실행 후 재시작 |
+| UI 에이전트 목록에 `tool_rag_agent`가 안 뜸 | `agent.py` 코드 문법 오류 또는 팩토리 함수 미노출 | 터미널 1의 콘솔 로그에 출력된 Traceback을 확인하고, `create_agent_executor` 함수명이 오타 없이 작성되었는지 점검 |
+| 도구 호출 결과가 빈 문자열로 나옴 | DB가 아직 빌드되지 않음 | `app/database/chroma_db` 존재 여부 확인 후, `python app/mcp/build_database.py` 실행 |
 
 ---
 
 ## 🏆 미션 완료 체크리스트
 
-- [ ] `.env`에 `ENTERPRISE_RAG_MCP_TOKEN`이 정상 설정되어 있음을 확인했다.
-- [ ] `app/mcp/enterprise_rag_server.py`에 `StaticTokenVerifier`, `ROLE_PROFILES`, `require_clearance`, `AuthMiddleware` 기반의 인증·인가 서버 인스턴스를 완성했다 (`TODO 1, 2`).
-- [ ] 검색 도구 3종(`search_company_policy`, `search_aws_guides`, `search_enterprise_erp`)과 그래프 탐색 도구 5종(`graph_*`)을 `@mcp.tool`로 등록했다 (`TODO 4, 5`).
-- [ ] 포트 `8010`에 FastMCP 서버를 기동하고, 노트북 Part 3의 역할별 도구 가시성 표(`partner` 1개, `staff` 2개, `manager` 3개, `executive` 8개)가 정상 출력됨을 확인했다.
+- [ ] `.env` 파일의 필수 API 키 및 시크릿 설정을 확인했다.
+- [ ] FastAPI 백엔드(:8000)와 Chainlit UI(:8080)를 가동하여 베이스 에이전트(`file_rag_agent`)와의 기본 통신을 검증했다.
+- [ ] `app/agents/tool_rag_agent/agent.py`에 `AsyncSqliteSaver`와 검색 도구(`tools_tool_rag`)를 바인딩한 `create_agent_executor()`를 완성했다.
+- [ ] UI 에이전트 목록에서 `tool_rag_agent`가 정상 로드되고 선택 가능함을 확인했다.
+- [ ] 5가지 테스트 시나리오에서 각 도구의 호출 횟수, 인자, 세션 맥락 기억을 확인했다.
+- [ ] (심화) 도구 설명 변경을 통해 LLM의 도구 및 인자 선택 판단 변화를 직접 관찰했다.
+
+수고하셨습니다! 이제 여러분은 단순 질의응답 챗봇을 넘어, **상황에 맞춰 사내 4대 전문 데이터베이스(규정집, 기술 백서, 지식 그래프, ERP)를 스스로 판단하고 호출하는 지능형 ReAct RAG 에이전트 서비스**를 완성했습니다. 🚀

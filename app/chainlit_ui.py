@@ -81,9 +81,9 @@ async def chat_profile(current_user: Optional[cl.User] = None):
     if not agents:
         return [
             cl.ChatProfile(
-                name="chatbot",
-                markdown_description="🤖 **Chatbot**: FastAPI 서버 연결 실패 (기본 폴백)",
-                icon="https://api.dicebear.com/7.x/bottts/svg?seed=chatbot"
+                name="file_rag_agent",
+                markdown_description="🤖 **File RAG Agent**: FastAPI 서버 연결 실패 (기본 폴백)",
+                icon="https://api.dicebear.com/7.x/bottts/svg?seed=file_rag_agent"
             )
         ]
 
@@ -102,7 +102,7 @@ async def chat_profile(current_user: Optional[cl.User] = None):
 @cl.on_chat_start
 async def on_chat_start():
     """새 대화방(New Chat) 시작 시 선택된 프로필 이름과 always_allow 목록을 초기화합니다."""
-    profile = cl.user_session.get("chat_profile") or "chatbot"
+    profile = cl.user_session.get("chat_profile") or "file_rag_agent"
     cl.user_session.set("always_allow_tools", set())  # 세션별 "항상 승인" 목록
 
     # 서버 연결 상태 확인
@@ -120,7 +120,7 @@ async def on_chat_start():
 async def on_chat_resume(thread: ThreadDict):
     """사이드바에서 기존 대화방 클릭 시 프로필 정보를 복원합니다."""
     tags = thread.get("tags") or []
-    profile = thread.get("metadata", {}).get("chat_profile") or (tags[0] if tags else "chatbot")
+    profile = thread.get("metadata", {}).get("chat_profile") or (tags[0] if tags else "file_rag_agent")
     cl.user_session.set("chat_profile", profile)
     cl.user_session.set("always_allow_tools", set())  # 복원 시 always_allow 초기화
 
@@ -493,7 +493,7 @@ async def on_message(message: cl.Message):
     HITL interrupt가 발생하면 사용자에게 결정을 요청하고 resume합니다.
     SSE 완료 후 세션에 활성 Job이 있으면 세션 모니터를 시작합니다.
     """
-    profile = cl.user_session.get("chat_profile") or "chatbot"
+    profile = cl.user_session.get("chat_profile") or "file_rag_agent"
     thread_id = cl.context.session.thread_id or str(uuid.uuid4())
     cl_user = cl.user_session.get("user")
     user_id = getattr(cl_user, "identifier", None) or "default"

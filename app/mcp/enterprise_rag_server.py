@@ -1,7 +1,7 @@
 """
 app/mcp/enterprise_rag_server.py
 ================================
-[Mission 02] Enterprise RAG FastMCP Server (Stateless Streamable HTTP + Bearer 인증 · 도구별 인가)
+[Mission 03] Enterprise RAG FastMCP Server (Stateless Streamable HTTP + Bearer 인증 · 도구별 인가)
 
 사내 규정집(Vector), AWS 아키텍처 백서(Vector), 전사 지식 그래프(GraphRAG), 사내 ERP(Text2SQL)를
 FastMCP 도구(`search_*` 3종 + 지식 그래프 탐색 `graph_*` 5종)로 노출하는 엔터프라이즈 RAG 마이크로서비스 서버입니다.
@@ -21,7 +21,7 @@ FastMCP 도구(`search_*` 3종 + 지식 그래프 탐색 `graph_*` 5종)로 노�
   search_enterprise_erp      data:erp    class:confidential    erp:read
   graph_* (탐색 도구 5종)     data:graph  class:confidential    graph:read
 
-👉 TODO 1, 2, 4, 5를 완성하세요. (missions/02_missions.md 2~3단계 참고)
+👉 TODO 1, 2, 4, 5를 완성하세요. (missions/03_missions.md 2~3단계 참고)
 
 실행:
   python app/mcp/enterprise_rag_server.py            # http://localhost:8010/mcp
@@ -53,7 +53,7 @@ from rag.sql import Text2SQL
 from rag.vector.retrieval import HybridRetriever
 
 # ==============================================================================
-# TODO 1. 인증기 및 등급 규칙 정의 (missions/02_missions.md 2단계 참고)
+# TODO 1. 인증기 및 등급 규칙 정의 (missions/03_missions.md 2단계 참고)
 #   - os.getenv("ENTERPRISE_RAG_MCP_TOKEN")으로 토큰을 읽고, 없으면 sys.exit()로 종료
 #   - ROLE_PROFILES (partner, staff, manager, executive) 정의: role, department, clearance, scopes
 #   - StaticTokenVerifier에 SERVER_TOKEN(서비스 계정) 및 '<SERVER_TOKEN>:<role>' 등록
@@ -112,7 +112,7 @@ erp_text2sql = Text2SQL.from_semantic_layer(
 
 
 # ==============================================================================
-# TODO 5. FastMCP 도구 등록: 검색 도구 3종 + 지식 그래프 탐색 도구 5종 (missions/02_missions.md 3단계 참고)
+# TODO 5. FastMCP 도구 등록: 검색 도구 3종 + 지식 그래프 탐색 도구 5종 (missions/03_missions.md 3단계 참고)
 #   - search_company_policy(query: str)
 #       auth=require_scopes("docs:read"),  tags={"data:docs", "class:internal"}
 #   - search_aws_guides(query: str)
@@ -126,7 +126,7 @@ erp_text2sql = Text2SQL.from_semantic_layer(
 
 if __name__ == "__main__":
     if mcp is None:
-        sys.exit("❌ TODO 1, 2를 먼저 완성하세요. (missions/02_missions.md 2단계)")
+        sys.exit("❌ TODO 1, 2를 먼저 완성하세요. (missions/03_missions.md 2단계)")
 
     parser = argparse.ArgumentParser(description="Enterprise RAG FastMCP Server")
     parser.add_argument("--port", type=int, default=8010, help="서버 포트 (기본값: 8010)")

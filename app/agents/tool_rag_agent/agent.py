@@ -7,7 +7,7 @@
 
 패키지 구조:
   app/agents/tool_rag_agent/
-   ├── agent.py      (에이전트 조립 및 팩토리)   👈 [Mission 01] 이 파일을 완성하세요!
+   ├── agent.py      (에이전트 조립 및 팩토리)   👈 [Mission 02] 이 파일을 완성하세요!
    ├── prompt.py     (TOOL_RAG_SYSTEM_PROMPT)
    └── tools.py      (4대 DB 검색 도구: 사내 규정, AWS 백서, 사내 ERP, 지식 그래프 탐색 5종)
 ===============================================================================
@@ -48,4 +48,4 @@ async def create_agent_executor(checkpointer=None):
     #                  checkpointer, context_schema=AgentContext)
     # ==========================================================================
 
-    raise NotImplementedError("Mission 01: create_agent_executor()를 완성하세요. (missions/01_missions.md 3단계 참고)")
+    raise NotImplementedError("Mission 02: create_agent_executor()를 완성하세요. (missions/02_missions.md 3단계 참고)")

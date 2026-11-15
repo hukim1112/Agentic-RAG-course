@@ -1,194 +1,253 @@
-# 🎯 Mission 03: Skills 에이전트 MCP 레지스트리 연동 및 Tool vs Skills 비교
+# 🎯 Mission 03: 인증·인가된 Enterprise RAG FastMCP 서버 구축 및 기동
 
-본 미션은 **Mission 02**에서 직접 구축·기동한 사내 Enterprise RAG MCP 서버(`http://localhost:8010/mcp`)를 대상으로,  
-`notebooks/3_MCP_and_Skills.ipynb`의 Part 6에서 학습한 **Anthropic Skills 기반 점진적 공개(Progressive Disclosure)** 패턴을 적용하여  
-CLI 스크립트 보안 검증, **MCP 서버 레지스트리(`mcp_servers.json`) 등록**, 그리고 Chainlit 웹 UI에서의 **`skill_rag_agent` vs `tool_rag_agent` 실전 비교**를 수행하는 실습 과제입니다.
+본 미션은 `notebooks/5_MCP_and_Skills.ipynb`의 Part 1\~3에서 학습한 **FastMCP 프레임워크와 2층 인가(Authorization) 아키텍처**를 바탕으로,  
+사내 4대 데이터베이스(규정집, AWS 아키텍처 백서, 사내 ERP, 전사 지식 그래프)를 **Bearer 토큰 인증과 역할·등급별 접근 제어가 적용된 독립 마이크로서비스 서버(`app/mcp/enterprise_rag_server.py`)**로 직접 구현하고 기동하는 실습 과제입니다.
 
 ---
 
 ## 📂 실습 대상 및 핵심 파일
 
-* **MCP 서버 레지스트리 (TODO 작성 대상)**: `app/agents/skill_rag_agent/skills/mcp/references/mcp_servers.json`  
-  👉 **이미 등록된 공개 위키백과(Stdio) 서버 옆에 사내 Enterprise RAG 서버(HTTP)를 추가 등록하세요!**
-* **MCP 스킬 패키지 (제공)**:
-  - 스킬 매뉴얼: `app/agents/skill_rag_agent/skills/mcp/Skill.md` (점진적 공개 Progressive Disclosure 지침)
-  - MCP 범용 클라이언트 CLI: `app/agents/skill_rag_agent/skills/mcp/scripts/list_tools.py`, `app/agents/skill_rag_agent/skills/mcp/scripts/execute_tool.py`
-* **비교 대상 에이전트 2종**:
-  - `app/agents/tool_rag_agent/` (Mission 01에서 완성한 도구 직접 바인딩 에이전트)
-  - `app/agents/skill_rag_agent/` (범용 원시 도구 3종 + 스킬 카탈로그만으로 동작하는 자율 탐색 에이전트)
-* **사전 조건**: Mission 02에서 구현한 `app/mcp/enterprise_rag_server.py`가 포트 `8010`에서 실행 중이어야 합니다.
+* **MCP 서버 구현 파일 (TODO 작성 대상)**: `app/mcp/enterprise_rag_server.py`  
+  👉 **이 파일의 `TODO 1, 2`(인증·인가 프로바이더 및 서버 생성)와 `TODO 4, 5`(4대 DB 도구 등록)를 완성하세요!**
+* **사전 구축된 4대 데이터베이스 (제공)**: `app/database/`
+  - `chroma_db/`: 사내 규정(`enterprise_policy_store`, 239청크) 및 AWS Well-Architected 백서(`aws_waf_guides_store`, 4,641청크)
+  - `enterprise_erp.db`: 사내 ERP 정형 데이터베이스 (SQLite, 7개 테이블 — `Text2SQL` 연동)
+  - `graphrag/`: Microsoft GraphRAG 전사 지식 그래프 인덱스 (`rag/graph/graph_explorer.py`의 탐색 도구 5종 연동)
+* **연계 학습 노트북**: `notebooks/5_MCP_and_Skills.ipynb`
 
 ---
 
 ## 📋 미션 목표
 
-1. **[미션 3-1] Skills CLI 클라이언트를 통한 보안 및 원격 도구 실행 검증**:
-   - `skill_rag_agent`가 내부적으로 사용하는 `list_tools.py`와 `execute_tool.py`를 직접 실행하여, 토큰이 없을 때 `401 Unauthorized`로 차단되는지 확인하고 `--token-env` 옵션으로 도구 조회 및 실행을 검증합니다.
-2. **[미션 3-2] MCP 서버 레지스트리(`mcp_servers.json`) 등록**:
-   - 실제 토큰 값을 노출하지 않는 `--token-env` 보안 규격에 맞추어 `mcp_servers.json`에 `"enterprise_rag"` 서버를 등록하고, 노트북 Part 6.2\~6.3 셀을 실행해 검증합니다.
-3. **[미션 3-3] Chainlit 웹 UI에서 `skill_rag_agent` vs `tool_rag_agent` 실전 비교**:
-   - 동일한 질문에 대해 두 에이전트의 도구 탐색 과정(Trajectory), 호출 횟수, 초기 프롬프트 토큰 비용, 확장성의 차이를 직접 비교 분석합니다.
+1. **[미션 3-1] 인증 토큰(`.env`) 점검 및 생성**:
+   - 사내 MCP 서버 전용 Bearer 토큰(`ENTERPRISE_RAG_MCP_TOKEN`)이 환경 변수에 설정되어 있는지 확인합니다.
+2. **[미션 3-2] FastMCP 토큰 인증기 및 2층 인가 미들웨어 구축 (`TODO 1, 2`)**:
+   - `StaticTokenVerifier`에 에이전트 서비스 계정 토큰과 역할별 테스트 토큰(`:partner`, `:staff`, `:manager`, `:executive`)을 등록하고, 데이터 등급 규칙 `require_clearance`를 서버 전역 `AuthMiddleware`로 연결합니다.
+3. **[미션 3-3] 4대 데이터베이스 MCP 도구 노출 (`TODO 4, 5`)**:
+   - 검색 도구 3종(`search_company_policy`, `search_aws_guides`, `search_enterprise_erp`)과 지식 그래프 탐색 도구 5종(`graph_*`)을 도메인 scope(`require_scopes("<도메인>:read")`)와 데이터 등급 태그(`tags={"data:*", "class:*"}`)와 함께 등록합니다.
+4. **[미션 3-4] MCP 서버 기동 및 노트북 Part 3\~5 연동 확인**:
+   - 포트 `8010`에 서버를 띄우고, `notebooks/5_MCP_and_Skills.ipynb`의 역할별 도구 가시성 테스트(Part 3)와 에이전트 연결 실습(Part 4\~5)을 내가 만든 서버로 실행합니다.
+
+---
+
+## 🧭 전체 진행 흐름 (노트북 5와 함께 진행)
+
+| 순서 | 단계 | 수행 위치 |
+| :---: | :--- | :--- |
+| ① | **Part 1\~2 & Part 3(이론)**: MCP 개념, FastMCP 스키마 검증, 인증/인가 2층 구조 이해 | `notebooks/5_MCP_and_Skills.ipynb` |
+| ② | **🎯 Mission 03 (현재 문서)**: 토큰 확인 → `enterprise_rag_server.py` TODO 완성 → 서버 기동 | **이 문서 1\~4단계** |
+| ③ | **Part 3(실습)\~Part 6.1**: 역할별 가시성 검증, 정적 바인딩, Search & Proxy, Skills 개념 | `notebooks/5_MCP_and_Skills.ipynb` |
+| ④ | **🎯 Mission 04**: CLI 보안 검증 → `mcp_servers.json` 등록 → Chainlit에서 `skill_rag_agent` 비교 | `missions/04_missions.md` |
 
 ---
 
 ## 🛠️ 단계별 수행 가이드
 
-### 1단계: CLI 클라이언트를 통한 3단계 보안 및 실행 검증 (미션 3-1)
+### 1단계: 인증 토큰 (.env) 확인 및 생성 (미션 3-1)
 
-에이전트에게 실행을 맡기기에 앞서, `skill_rag_agent`가 `bash_command`로 호출하게 될 CLI 스크립트를 터미널에서 먼저 검증합니다.  
-*(FastMCP 서버가 꺼져 있다면 다른 터미널에서 `python app/mcp/enterprise_rag_server.py --port 8010`을 먼저 실행하세요.)*
+터미널(WSL 환경)에서 사내 MCP 서버 전용 Bearer 토큰이 `.env`에 설정되어 있는지 확인합니다:
 
-#### ① [보안 검증 1] 토큰 없이 요청 시 `401 Unauthorized` 차단 확인
 ```bash
-python app/agents/skill_rag_agent/skills/mcp/scripts/list_tools.py --url http://localhost:8010/mcp
-```
-**기대 출력 (차단 성공):**
-```json
-[*] Connecting to remote MCP Server: http://localhost:8010/mcp ...
-{
-  "status": "ERROR",
-  "message": "Failed to retrieve tools from 'http://localhost:8010/mcp': Client error '401 Unauthorized' for url 'http://localhost:8010/mcp'..."
-}
+# 토큰 환경변수 등록 여부 확인 (값은 마스킹되어 변수명만 출력됨)
+grep -E '^ENTERPRISE_RAG_MCP_TOKEN=' .env | cut -d= -f1
 ```
 
-#### ② [보안 검증 2] 환경 변수 이름(`--token-env`)과 함께 도구 목록 조회
-```bash
-python app/agents/skill_rag_agent/skills/mcp/scripts/list_tools.py --url http://localhost:8010/mcp --token-env ENTERPRISE_RAG_MCP_TOKEN
-```
-**기대 출력 (검색 도구 3종 + 그래프 탐색 도구 5종, 총 8개 정상 조회):**
-```json
-[*] Connecting to remote MCP Server: http://localhost:8010/mcp ...
-{
-  "status": "SUCCESS",
-  "mcp_target": "http://localhost:8010/mcp",
-  "tools": [
-    {
-      "name": "search_company_policy",
-      "description": "사내 5대 공식 규정 문서(국내여비교통비지급규정, 인사복무규정, 정보보안관리지침, 전사위임전결및예산집행규정, 클라우드및GPU인프라운영지침)에서..."
-    },
-    {
-      "name": "search_aws_guides",
-      "description": "AWS Well-Architected Framework 4대 아키텍처 백서(Security, Reliability, Performance Efficiency, Cost Optimization)에서..."
-    },
-    {
-      "name": "search_enterprise_erp",
-      "description": "사내 ERP 정형 데이터베이스(부서 마스터, 임직원 명부, 전략 프로젝트 및 투입 인력..."
-    },
-    {
-      "name": "graph_find_entities",
-      "description": "전사 지식 그래프(조직도, 보고선·결재선, 전략 프로젝트 P-01~P-06)에서 질문 속 인물·부서·프로젝트에 해당하는 엔티티를 찾습니다..."
-    },
-    {
-      "name": "graph_neighbors",
-      "description": "지식 그래프에서 한 엔티티와 연결된 관계(소속, 보고, 담당, 승인, 의존 등)를 펼칩니다..."
-    }
-  ]
-}
-```
-
-#### ③ [도구 실행 검증 3] 지식 그래프 탐색 도구(`graph_neighbors`) 원격 실행
-```bash
-python app/agents/skill_rag_agent/skills/mcp/scripts/execute_tool.py --url http://localhost:8010/mcp --token-env ENTERPRISE_RAG_MCP_TOKEN \
-  --tool graph_neighbors --args '{"entity": "KIM CHUL-SOO", "query": "담당 프로젝트와 보고선", "top_k": 3}'
-```
-**기대 출력:**
-```json
-[*] Connecting to remote MCP Server: http://localhost:8010/mcp ...
-{
-  "status": "SUCCESS",
-  "mcp_target": "http://localhost:8010/mcp",
-  "tool_name": "graph_neighbors",
-  "output": "### KIM CHUL-SOO의 1홉 관계 3/13개 ('담당 프로젝트와 보고선'와 가까운 순)\nR159 KIM CHUL-SOO ─ PROJECT P-01 [가중치 9] Kim Chul-soo is the PM for Project P-01 (근거 T7)\n..."
-}
-```
-
-> 💡 **보너스: 기본 제공되는 공개 Stdio 위키백과 MCP 서버 테스트**:
+> 💡 **`ENTERPRISE_RAG_MCP_TOKEN`이 출력되지 않는 경우**: 아래 명령어를 실행하여 32바이트 난수 토큰을 생성해 `.env`에 추가하세요:
 > ```bash
-> python app/agents/skill_rag_agent/skills/mcp/scripts/list_tools.py --url "npx -y wikipedia-mcp"
+> echo "ENTERPRISE_RAG_MCP_TOKEN=$(python -c 'import secrets; print(secrets.token_urlsafe(32))')" >> .env
 > ```
-> `--url` 값이 `http`로 시작하지 않으면 CLI가 자동으로 Stdio 서브프로세스로 실행하여 `search`, `readArticle` 등의 도구 목록을 조회합니다.
 
 ---
 
-### 2단계: MCP 서버 레지스트리 등록 (미션 3-2)
+### 2단계: FastMCP 인증기 및 서버 인스턴스 생성 (미션 3-2)
 
-`skill_rag_agent`는 어떤 MCP 서버가 존재하는지 알아내기 위해 `app/agents/skill_rag_agent/skills/mcp/references/mcp_servers.json` 파일을 가장 먼저 읽습니다.  
-이 파일을 열면 현재 위키백과(`"wikipedia"`) 서버만 등록되어 있습니다.
+`app/mcp/enterprise_rag_server.py` 파일을 열고, **TODO 1과 TODO 2**를 완성합니다.
 
-`"wikipedia": {...}` 블록 닫는 중괄호 뒤에 **쉼표(`,`)를 붙이고 `"enterprise_rag"` 블록을 추가**하여 아래와 같이 만드세요. *(파일 전체를 아래 JSON으로 통째로 교체해도 됩니다.)*
+> 📌 **시작 상태 확인**:  
+> 파일 상단에는 `FastMCP`, `AuthContext`, `require_scopes`, `StaticTokenVerifier`, `AuthMiddleware` 등의 import 문이 이미 준비되어 있고, 중간(3번 섹션)에는 DB 및 검색기 로딩 코드가 작성되어 있습니다.  
+> 파일의 **`TODO 1` ~ `TODO 2` 구간(`verifier = None  # TODO` 및 `mcp = None  # TODO`)을 아래 코드로 교체**하세요.  
+> *(TODO 2를 완성하기 전에 서버를 실행하면 `❌ TODO 1, 2를 먼저 완성하세요.` 메시지와 함께 종료됩니다.)*
 
-```json
-{
-  "wikipedia": {
-    "name": "Wikipedia-MCP-Server",
-    "transport": "stdio",
-    "url": "npx -y wikipedia-mcp",
-    "description": "위키백과 백과사전 검색 및 문서 읽기 도구 (search, readArticle. 영문 query만 허용)"
-  },
-  "enterprise_rag": {
-    "name": "Enterprise-RAG-Server",
-    "transport": "streamable-http",
-    "url": "http://localhost:8010/mcp",
-    "auth": {
-      "type": "bearer",
-      "token_env": "ENTERPRISE_RAG_MCP_TOKEN"
-    },
-    "description": "사내 규정 검색(search_company_policy), AWS 아키텍처 백서 검색(search_aws_guides), 전사 지식 그래프 탐색(graph_find_entities, graph_neighbors, graph_find_path, graph_search_communities, graph_read), 사내 ERP 정형 DB 조회(search_enterprise_erp) 도구"
-  }
+```python
+# app/mcp/enterprise_rag_server.py (TODO 1 & 2 교체 코드)
+
+# 1. 인증기: 토큰마다 '무엇을 할 수 있나(scopes)'와 '누구인가(role, department, clearance)'를 등록
+SERVER_TOKEN = os.getenv("ENTERPRISE_RAG_MCP_TOKEN")
+if not SERVER_TOKEN:
+    sys.exit("❌ .env에 ENTERPRISE_RAG_MCP_TOKEN이 없습니다. 토큰을 설정한 뒤 다시 실행하세요.")
+
+# 역할별 권한 프로필. 운영 환경에서는 IdP가 사용자마다 JWT를 발급하고, 같은 정보가 JWT claim으로 들어옵니다.
+#   - scopes:    도메인 접근권 (<도메인>:<동작>)
+#   - clearance: 열람 가능한 최고 데이터 등급 (정보보안관리지침의 4등급)
+ROLE_PROFILES = {
+    "partner":   {"client_id": "user-partner",   "role": "partner",   "department": "외부협력사",
+                  "clearance": "public",       "scopes": ["docs:read"]},
+    "staff":     {"client_id": "user-staff",     "role": "staff",     "department": "AgenticAI팀",
+                  "clearance": "internal",     "scopes": ["docs:read"]},
+    "manager":   {"client_id": "user-manager",   "role": "manager",   "department": "경영기획팀",
+                  "clearance": "confidential", "scopes": ["docs:read", "erp:read"]},
+    "executive": {"client_id": "user-executive", "role": "executive", "department": "AI혁신본부",
+                  "clearance": "secret",       "scopes": ["docs:read", "erp:read", "graph:read"]},
 }
+
+# 개발용 StaticTokenVerifier: 등록한 dict 전체가 토큰의 claims가 됩니다.
+#   - 기본 토큰: 에이전트 서비스 계정 (모든 도구 사용)
+#   - '<기본 토큰>:<역할>': 역할별 테스트 토큰
+verifier = StaticTokenVerifier(
+    tokens={
+        SERVER_TOKEN: {"client_id": "enterprise-rag-agent", "role": "service", "department": "AI혁신본부",
+                       "clearance": "confidential", "scopes": ["docs:read", "erp:read", "graph:read"]},
+        **{f"{SERVER_TOKEN}:{name}": profile for name, profile in ROLE_PROFILES.items()},
+    }
+)
+
+# 데이터 등급 (낮음 → 높음). 정보보안관리지침의 공개 · 사내한 · 대외비 · 극비
+CLEARANCE_LEVELS = ["public", "internal", "confidential", "secret"]
+
+
+# 사용자 정의 인가 규칙: AuthContext(검증된 토큰 + 접근하려는 도구)를 받아 허용 여부를 반환
+def require_clearance(ctx: AuthContext) -> bool:
+    """도구의 데이터 등급(class:* 태그)이 사용자의 열람 등급(clearance claim) 이하일 때만 통과합니다."""
+    if ctx.token is None:
+        return False
+    tool_class = next((tag.split(":", 1)[1] for tag in ctx.component.tags if tag.startswith("class:")), None)
+    if tool_class not in CLEARANCE_LEVELS:   # 등급이 없거나 모르는 등급의 도구는 막습니다 (fail-closed)
+        return False
+    user_clearance = ctx.token.claims.get("clearance", "public")
+    return CLEARANCE_LEVELS.index(tool_class) <= CLEARANCE_LEVELS.index(user_clearance)
+
+
+# 2. FastMCP 서버 인스턴스 생성
+#    - auth: 토큰 없는 요청은 401로 차단
+#    - AuthMiddleware: 모든 도구에 등급 규칙(require_clearance)을 적용하는 서버 전역 정책
+mcp = FastMCP(
+    name="Enterprise-RAG-Server",
+    instructions="사내 규정집, AWS 아키텍처 백서, 전사 지식 그래프(GraphRAG) 및 사내 ERP(Text2SQL)를 제공하는 통합 RAG 서버",
+    auth=verifier,
+    middleware=[AuthMiddleware(auth=require_clearance)],
+)
 ```
 
-> 🔑 **보안 핵심 원칙 (`token_env`)**:  
-> JSON 파일에 실제 토큰 문자열(비밀값)을 직접 하드코딩하지 않고, **환경 변수 이름(`ENTERPRISE_RAG_MCP_TOKEN`)**만 기술합니다.  
-> 덕분에 에이전트가 이 JSON 파일을 `file_read`로 읽더라도 시스템 프롬프트, 대화 히스토리, LangSmith 트레이스 로그에 실제 토큰 값이 절대 노출되지 않습니다.
-
-> 📌 **노트북 Part 6.2\~6.3 실행 확인**:  
-> 레지스트리 파일을 저장한 뒤, `notebooks/3_MCP_and_Skills.ipynb`의 **Part 6.1 레지스트리 확인 셀 ~ Part 6.3 Skills 에이전트 실행 셀**을 실행해 보세요. 에이전트가 방금 등록한 `mcp_servers.json`을 읽고 도구를 스스로 찾아 답변하며, 토큰 노출 검사에서 `노출 없음 ✅`이 출력되는 것을 확인할 수 있습니다.
-
 ---
 
-### 3단계: Chainlit 웹 UI에서 `skill_rag_agent` vs `tool_rag_agent` 비교 (미션 3-3)
+### 3단계: 4대 데이터베이스 MCP 도구 구현 (미션 3-3)
 
-이제 웹 UI 환경에서 `skill_rag_agent`와 `tool_rag_agent`를 직접 비교합니다.
+이어서 `app/mcp/enterprise_rag_server.py` 하단의 **TODO 4(스키마 정의)와 TODO 5(검색 도구 3종 + 그래프 탐색 도구 5종)**를 완성합니다.
 
-> ⚠️ **사전 조건 점검 (터미널 3개)**:
-> 1. **터미널 1 (FastAPI 백엔드)**: `python app/server.py` (포트 8000)
-> 2. **터미널 2 (Chainlit UI)**: `chainlit run app/chainlit_ui.py --port 8080` (포트 8080)
-> 3. **터미널 3 (FastMCP 서버)**: `python app/mcp/enterprise_rag_server.py --port 8010` (포트 8010)  
->    *(주의: 노트북 마지막 셀에서 노트북이 띄운 MCP 서버를 종료했다면, 반드시 터미널 3에서 다시 띄워 두어야 `skill_rag_agent`가 접속할 수 있습니다!)*
+> 📌 **붙여넣을 위치**: 아래 코드 블록 전체를 `TODO 4` · `TODO 5` 주석 아래, **`if __name__ == "__main__":` 줄 바로 위**에 붙여넣으세요.  
+> `@mcp.tool` 데코레이터는 2단계에서 만든 `mcp` 인스턴스를 사용하므로 반드시 2단계를 먼저 작성해야 합니다.
 
-Chainlit UI(`http://localhost:8080`) 상단 프로필을 **`skill_rag_agent`**로 변경하고 아래 질문들을 전송해 보세요.
+각 도구에는 **두 층의 인가**가 적용됩니다:
+- **1층 (도메인 접근권)**: 각 도구의 `auth=require_scopes("<도메인>:read")`가 토큰의 `scopes`를 검사합니다.
+- **2층 (데이터 보안 등급)**: 각 도구의 `tags={"class:<등급>"}`을 서버 전역 미들웨어(`require_clearance`)가 읽어 토큰의 `clearance` 등급과 비교합니다.
 
-#### 🧪 `skill_rag_agent`의 5단계 자율 탐색 궤적 (Trajectory) 관찰:
-1. **레지스트리 확인**: 전용 검색 도구가 없음을 인지하고, `file_read("app/agents/skill_rag_agent/skills/mcp/references/mcp_servers.json")`로 사내 서버 URL(`http://localhost:8010/mcp`)과 인증 환경 변수명(`ENTERPRISE_RAG_MCP_TOKEN`) 파악
-2. **스킬 명세 열람**: `file_read("app/agents/skill_rag_agent/skills/mcp/Skill.md")`로 CLI 스크립트 사용법 확인
-3. **도구 목록 조회**: `bash_command`로 `list_tools.py --url http://localhost:8010/mcp --token-env ENTERPRISE_RAG_MCP_TOKEN`을 실행하여 도구 스키마 획득
-4. **원격 도구 실행**: 필요한 인자를 담아 `execute_tool.py`를 실행하여 사내 DB 결과 수집 (복합 질문 시 여러 번 호출)
-5. **최종 응답 생성**: 수집된 근거를 종합하여 조항 번호·수치와 함께 최종 답변 작성
-
-> 💡 1·2번 순서는 모델 판단에 따라 바뀔 수 있습니다. 핵심은 **도구 스키마를 미리 받지 않고 파일(`mcp_servers.json`, `Skill.md`) → CLI(`list_tools.py`, `execute_tool.py`) 순으로 스스로 찾아간다**는 점입니다. 또한 **같은 대화 세션에서 후속 질문을 던지면** 이미 확인한 서버 URL과 도구 목록을 기억하므로 1\~3단계를 생략하고 곧바로 `execute_tool.py`(4단계)만 실행합니다!
-
-#### 🧪 테스트 질문 및 기대 결과:
-
-| 질문 | 주요 호출 도구 | 기대 답변 핵심 | 소요 시간(참고) |
+| 도구 | 부여할 `tags` | 요구할 `scope` | 접근 가능한 역할 (`partner` / `staff` / `manager` / `executive`) |
 | :--- | :--- | :--- | :--- |
-| `"정보보안 지침상 데이터 반출 승인 절차는?"` | `search_company_policy` 1회 | DLP 결재 시스템으로 사전 신청 → 1차 소속 팀장, 2차 CISO 승인 (정보보안관리지침 제14조) | 약 20초 |
-| `"AgenticAI팀이 총괄하는 프로젝트의 예산과 승인권자는?"` | `graph_find_entities` → `graph_neighbors` 또는 `search_enterprise_erp` | P-02 엔터프라이즈 Agentic RAG 플랫폼 구축, 총괄 PM 홍팀장 수석, 예산 4억 8,000만원, 승인권자 송본부장 상무 | 약 30초 |
-| `"과장급 직원이 지방으로 당일 출장을 다녀오면 일비 감액 기준이 어떻게 되나요?"` | `search_company_policy` | 당일 출장 일비는 기준액의 50% 지급 (국내여비교통비지급규정 제15조). 사내 직급 체계(수석/책임/선임/전임) 기준 함께 안내 | 약 35초 |
+| `search_aws_guides` | `data:docs`, `class:public` | `docs:read` | 전원 (`partner`, `staff`, `manager`, `executive`) |
+| `search_company_policy` | `data:docs`, `class:internal` | `docs:read` | 사내 직원 이상 (`staff`, `manager`, `executive`) |
+| `search_enterprise_erp` | `data:erp`, `class:confidential` | `erp:read` | 팀장 이상 (`manager`, `executive`) |
+| `graph_*` 탐색 도구 5종 | `data:graph`, `class:confidential` | `graph:read` | 임원 (`executive`) 및 에이전트 서비스 계정 |
+
+지식 그래프 도구 5종(`graph_find_entities`, `graph_neighbors`, `graph_find_path`, `graph_search_communities`, `graph_read`)은 `rag/graph/graph_explorer.py`에 LangChain 도구로 이미 정의되어 있으므로, 중복 작성 없이 **이름·설명·함수를 그대로 꺼내 `mcp.tool()`에 등록**합니다:
+
+```python
+# app/mcp/enterprise_rag_server.py (TODO 4 & 5 작성 코드)
+
+# 4. 입력 스키마: 각 도구의 인자 타입 힌트(Annotated, Field)로 정의하며 FastMCP가 Pydantic으로 검증합니다.
+
+# 5. FastMCP 도구 등록
+#    - auth:  1층 scope (이 도메인에 접근할 수 있는가)
+#    - tags:  data:* 는 데이터 도메인, class:* 는 데이터 등급 (2층 등급 규칙이 읽음)
+#    권한이 없으면 도구 목록에서 숨겨지고 호출도 거부됩니다.
+# 5-1. 사내 규정: 사내한(internal) 등급
+@mcp.tool(
+    name="search_company_policy",
+    description=(
+        "사내 5대 공식 규정 문서(국내여비교통비지급규정, 인사복무규정, 정보보안관리지침, 전사위임전결및예산집행규정, 클라우드및GPU인프라운영지침)에서 "
+        "출장비 기준, 인사·징계 양정, 보안 반출 절차, 금액별 전결 기준, GPU 유휴 회수 규정 등 사내 제도·원칙 조항을 검색합니다.\n\n"
+        "반환 형태: 검색된 조항의 앞뒤 문맥이 결합된 본문과 함께 상단에 [문서 전체 목차(TOC)] 및 [현재 위치 경로(Breadcrumb)]가 포함된 텍스트를 반환합니다."
+    ),
+    auth=require_scopes("docs:read"),
+    tags={"data:docs", "class:internal"},
+)
+def search_company_policy(query: str) -> str:
+    docs = policy_retriever.search(query, top_k=2)
+    if not docs:
+        return f"'{query}' 관련 사내 규정을 찾지 못했습니다."
+    return "\n\n".join([f"[{d.metadata.get('breadcrumb', '사내규정')}]:\n{d.page_content}" for d in docs])
+
+
+# 5-2. AWS 백서: 공개(public) 등급
+@mcp.tool(
+    name="search_aws_guides",
+    description=(
+        "AWS Well-Architected Framework 4대 아키텍처 백서(Security, Reliability, Performance Efficiency, Cost Optimization)에서 "
+        "클라우드 설계 원칙, 모범 사례(Best Practice), 흔한 안티패턴(Common anti-patterns), 구현 지침을 검색합니다.\n\n"
+        "반환 형태: 검색된 모범 사례의 앞뒤 문맥이 결합된 본문과 함께 상단에 [문서 전체 목차(TOC)] 및 [현재 위치 경로(Breadcrumb)]가 포함된 텍스트를 반환합니다."
+    ),
+    auth=require_scopes("docs:read"),
+    tags={"data:docs", "class:public"},
+)
+def search_aws_guides(query: str) -> str:
+    docs = aws_retriever.search(query, top_k=2)
+    if not docs:
+        return f"'{query}' 관련 AWS 아키텍처 백서를 찾지 못했습니다."
+    return "\n\n".join([f"[{d.metadata.get('breadcrumb', 'AWS 백서')}]:\n{d.page_content}" for d in docs])
+
+
+# 5-3. 사내 ERP: 대외비(confidential) 등급 (프로젝트 상세 예산 · 인사 데이터)
+@mcp.tool(
+    name="search_enterprise_erp",
+    description=(
+        "사내 ERP 정형 데이터베이스(부서 마스터, 임직원 명부, 전략 프로젝트 및 투입 인력, 프로젝트 지출 결의 전표, "
+        "GPU 클러스터 할당·가동률 대장, 부서별·비목별 운영 예산 원장)에서 실시간 수치와 현황 레코드를 조회합니다.\n"
+        "query에는 SQL 문이 아니라 자연어 질문을 넣으세요. SQL은 이 도구가 스키마를 보고 직접 생성합니다.\n\n"
+        "반환 형태: 자연어 질의를 변환해 실행한 SELECT SQL 쿼리문, 적용한 해석 가정, 조회된 결과 마크다운 표(컬럼명 및 행 데이터)를 반환합니다."
+    ),
+    auth=require_scopes("erp:read"),
+    tags={"data:erp", "class:confidential"},
+)
+def search_enterprise_erp(
+    query: Annotated[str, Field(description="조회하려는 내용을 담은 자연어 질문 (SQL 문 아님). 예: 'AgenticAI팀 프로젝트별 승인 예산'")],
+    context: Annotated[str, Field(description="사내 규정 등에서 먼저 확인한 참고 기준값 (선택)")] = "",
+) -> str:
+    return erp_text2sql.invoke(query, context=context).to_text()
+
+
+# 5-4. 지식 그래프 탐색 도구 5종: 대외비(confidential) 등급 (결재선 · 프로젝트 예산 · 리스크)
+#      LangChain 도구의 이름·설명·함수를 그대로 등록해 tool_rag_agent와 정의를 공유합니다.
+for graph_tool in graph_explorer_tools:
+    mcp.tool(
+        name=graph_tool.name,
+        description=graph_tool.description,
+        auth=require_scopes("graph:read"),
+        tags={"data:graph", "class:confidential"},
+    )(graph_tool.func)
+```
+
+> 💡 `@mcp.tool(...)`은 데코레이터이므로 `mcp.tool(...)(함수)`처럼 함수 호출 형태로도 사용할 수 있습니다. 인자 설명(`Annotated[..., Field(description=...)]`)은 `graph_tool.func`의 타입 힌트에 이미 들어 있어 FastMCP가 그대로 입력 스키마로 변환합니다.
 
 ---
 
-### 📊 종합 비교: Tool RAG vs Skills RAG
+### 4단계: FastMCP 서버 기동 확인 (미션 3-4)
 
-같은 질문을 `tool_rag_agent`에도 던져 보고 두 아키텍처의 차이를 비교해 보세요:
+새 터미널을 열어 작성한 FastMCP 서버가 오류 없이 기동되는지 확인합니다:
 
-| 비교 항목 | Tool RAG (`tool_rag_agent`) | Skills RAG (`skill_rag_agent`) |
-| :--- | :--- | :--- |
-| **도구 바인딩 방식** | 파이썬 코드 레벨에서 `@tool`로 직접 바인딩 | `Skill.md` + `mcp_servers.json` 기반 동적 탐색 |
-| **초기 프롬프트 토큰** | 도구가 늘어날수록 토큰 급증 (100개면 수만 토큰 소모) | **스킬 카탈로그 몇 줄로 고정** (도구 스키마는 필요할 때만 조회) |
-| **확장성 (Scalability)** | 새 도구 추가 시 에이전트 코드 수정 및 서버 재시작 필요 | **에이전트 코드 수정·재시작 없음** (`mcp_servers.json`에 서버만 추가) |
-| **응답 속도** | 빠름 (곧바로 도구 호출) | 첫 질문 시 탐색 단계(파일 읽기 2회 + `list_tools` 1회)만큼 시간 소요 |
-| **실무 적용 추천** | 고정된 핵심 도구 5\~10개를 쓰는 목적형 에이전트 | 사내 수십 개 마이크로서비스와 CLI를 넘나드는 **범용·코딩·분석 에이전트** |
+```bash
+python app/mcp/enterprise_rag_server.py --port 8010
+```
+
+**성공 콘솔 출력:**
+```text
+🚀 Enterprise RAG FastMCP 서버 시작 (포트: 8010, Bearer 인증 + 도구별 인가 활성화)...
+```
+
+---
+
+> ### ✅ Mission 03 완료 → 노트북 `5_MCP_and_Skills.ipynb`의 Part 3 실습 셀로 돌아가세요!
+> 1. 위 터미널에 띄운 MCP 서버(포트 8010)를 켜 둔 채로(또는 노트북의 서버 자동 기동 셀을 사용하여) 노트북 **Part 3의 코드 셀**부터 이어서 실행합니다.
+> 2. Part 3의 역할별 도구 가시성 표에서 **`partner(1개) / staff(2개) / manager(3개) / executive(8개)`** 가 정확히 출력되면 서버의 인증·인가 구현이 완벽히 성공한 것입니다!
+> 3. 이어서 내가 만든 서버를 대상으로 **Part 4(정적 바인딩)**, **Part 5(Search & Proxy)**, **Part 6.1(Skills 점진적 공개 개념)** 까지 실행한 뒤 **`missions/04_missions.md`(Mission 04)** 로 이동하세요.
 
 ---
 
@@ -196,18 +255,15 @@ Chainlit UI(`http://localhost:8080`) 상단 프로필을 **`skill_rag_agent`**�
 
 | 증상 / 오류 메시지 | 원인 | 해결 방법 |
 | :--- | :--- | :--- |
-| `Failed to retrieve tools ... ConnectError` | 포트 `8010`에 FastMCP 서버가 떠 있지 않음 | 터미널 3에서 `python app/mcp/enterprise_rag_server.py --port 8010` 실행 |
-| `StaticTokenVerifier: 401 Unauthorized` | `.env`의 토큰과 클라이언트 환경 변수 불일치 | `grep ENTERPRISE_RAG_MCP_TOKEN .env` 값을 확인하고 서버를 재시작 |
-| `json.decoder.JSONDecodeError` (`--args`) | CLI 인자의 따옴표 이스케이프 오류 | `--args` 전체는 작은따옴표(`'...'`)로 감싸고 내부 JSON 키/문자열은 큰따옴표(`"..."`)로 전달: `'{"query": "..."}'` |
-| `skill_rag_agent`가 사내 서버를 못 찾고 위키백과만 봄 | `mcp_servers.json`에 `"enterprise_rag"` 미등록 또는 JSON 문법 오류 | 2단계의 JSON 코드로 `app/agents/skill_rag_agent/skills/mcp/references/mcp_servers.json`을 저장했는지 확인 |
+| `❌ TODO 1, 2를 먼저 완성하세요.` | `mcp = None` 상태가 그대로 남아 있음 | 2단계의 `verifier = StaticTokenVerifier(...)` 및 `mcp = FastMCP(...)` 코드로 `TODO 1, 2`를 교체했는지 확인 |
+| `AttributeError: 'NoneType' object has no attribute 'tool'` | `mcp = FastMCP(...)`보다 `@mcp.tool`이 먼저 실행되었거나 `mcp = None`이 아래쪽에 남아 있음 | 2단계에서 `mcp = None  # TODO` 줄을 삭제하고 `mcp = FastMCP(...)`로 교체했는지 확인 |
+| `Address already in use (:8010)` | 이전 FastMCP 서버 프로세스가 이미 포트 8010을 점유 중 | `lsof -ti:8010 \| xargs -r kill -9` 또는 `pkill -f enterprise_rag_server` 실행 후 재기동 |
 
 ---
 
 ## 🏆 미션 완료 체크리스트
 
-- [ ] 토큰이 없을 때 `401 Unauthorized` 차단, `--token-env` 사용 시 도구 목록 조회 및 원격 도구 실행이 성공함을 CLI로 확인했다.
-- [ ] `app/agents/skill_rag_agent/skills/mcp/references/mcp_servers.json`에 `"enterprise_rag"` 서버를 보안 규격(`token_env`)에 맞추어 등록했다.
-- [ ] 노트북 `3_MCP_and_Skills.ipynb`의 Part 6.2\~6.3을 실행하여 Skills 에이전트 동작과 토큰 비노출(`노출 없음 ✅`)을 확인했다.
-- [ ] Chainlit UI에서 `skill_rag_agent`의 5단계 점진적 탐색 궤적(파일 읽기 → `list_tools` → `execute_tool`)을 관찰하고, `tool_rag_agent`와의 트레이드오프를 이해했다.
-
-축하합니다! 이제 여러분은 도구가 에이전트 코드에 강결합된 구조를 넘어, **인증·인가된 MCP 서버와 Skills 점진적 공개 아키텍처**까지 완벽하게 구축하고 검증했습니다! 🚀
+- [ ] `.env`에 `ENTERPRISE_RAG_MCP_TOKEN`이 정상 설정되어 있음을 확인했다.
+- [ ] `app/mcp/enterprise_rag_server.py`에 `StaticTokenVerifier`, `ROLE_PROFILES`, `require_clearance`, `AuthMiddleware` 기반의 인증·인가 서버 인스턴스를 완성했다 (`TODO 1, 2`).
+- [ ] 검색 도구 3종(`search_company_policy`, `search_aws_guides`, `search_enterprise_erp`)과 그래프 탐색 도구 5종(`graph_*`)을 `@mcp.tool`로 등록했다 (`TODO 4, 5`).
+- [ ] 포트 `8010`에 FastMCP 서버를 기동하고, 노트북 Part 3의 역할별 도구 가시성 표(`partner` 1개, `staff` 2개, `manager` 3개, `executive` 8개)가 정상 출력됨을 확인했다.
