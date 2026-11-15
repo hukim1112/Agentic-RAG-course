@@ -48,4 +48,4 @@ async def create_agent_executor(checkpointer=None):
     #                  checkpointer, context_schema=AgentContext)
     # ==========================================================================
 
-    raise NotImplementedError("Mission 02: create_agent_executor()를 완성하세요. (missions/02_missions.md 3단계 참고)")
+    raise NotImplementedError("Mission 02: create_agent_executor()를 완성하세요. (missions/02_missions.md 2단계 참고)")

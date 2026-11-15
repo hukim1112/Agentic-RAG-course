@@ -37,7 +37,6 @@ async def create_agent_executor(checkpointer=None):
     llm = init_chat_model(model="gemini-3.8-flash", temperature=0.0)
 
     # 2. AsyncSqliteSaver 기반 체크포인터 (SQLite 영구 메모리)
-    conn = None
     if checkpointer is None:
         db_dir = "app/database"
         os.makedirs(db_dir, exist_ok=True)
@@ -53,7 +52,7 @@ async def create_agent_executor(checkpointer=None):
     middleware = [SkillCatalogMiddleware(get_skill_prompt_builder())]
 
     # 4. 범용 원시 도구 3종만 장착한 Skill RAG 에이전트 구축
-    skill_rag_agent = create_agent(
+    return create_agent(
         model=llm,
         tools=tools_skill_rag,
         system_prompt=BASE_SKILL_RAG_SYSTEM_PROMPT,
@@ -61,5 +60,3 @@ async def create_agent_executor(checkpointer=None):
         checkpointer=checkpointer,
         context_schema=AgentContext,
     )
-    skill_rag_agent.checkpointer_conn = conn
-    return skill_rag_agent

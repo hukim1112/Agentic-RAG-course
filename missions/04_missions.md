@@ -25,7 +25,7 @@ CLI 스크립트 보안 검증, **MCP 서버 레지스트리(`mcp_servers.json`)
 1. **[미션 4-1] Skills CLI 클라이언트를 통한 보안 및 원격 도구 실행 검증**:
    - `skill_rag_agent`가 내부적으로 사용하는 `list_tools.py`와 `execute_tool.py`를 직접 실행하여, 토큰이 없을 때 `401 Unauthorized`로 차단되는지 확인하고 `--token-env` 옵션으로 도구 조회 및 실행을 검증합니다.
 2. **[미션 4-2] MCP 서버 레지스트리(`mcp_servers.json`) 등록**:
-   - 실제 토큰 값을 노출하지 않는 `--token-env` 보안 규격에 맞추어 `mcp_servers.json`에 `"enterprise_rag"` 서버를 등록하고, 노트북 Part 6.2\~6.3 셀을 실행해 검증합니다.
+   - 실제 토큰 값을 노출하지 않는 `--token-env` 보안 규격에 맞추어 `mcp_servers.json`에 `"enterprise_rag"` 서버를 등록하고, 노트북 `Part 6.1(레지스트리 확인) ~ Part 7` 셀을 실행해 검증합니다.
 3. **[미션 4-3] Chainlit 웹 UI에서 `skill_rag_agent` vs `tool_rag_agent` 실전 비교**:
    - 동일한 질문에 대해 두 에이전트의 도구 탐색 과정(Trajectory), 호출 횟수, 초기 프롬프트 토큰 비용, 확장성의 차이를 직접 비교 분석합니다.
 
@@ -55,7 +55,7 @@ python app/agents/skill_rag_agent/skills/mcp/scripts/list_tools.py --url http://
 ```bash
 python app/agents/skill_rag_agent/skills/mcp/scripts/list_tools.py --url http://localhost:8010/mcp --token-env ENTERPRISE_RAG_MCP_TOKEN
 ```
-**기대 출력 (검색 도구 3종 + 그래프 탐색 도구 5종, 총 8개 정상 조회):**
+**기대 출력 (검색 도구 3종 + 그래프 탐색 도구 5종, 총 8개 정상 조회 — 긴 문자열·스키마 일부 축약):**
 ```json
 [*] Connecting to remote MCP Server: http://localhost:8010/mcp ...
 {
@@ -64,24 +64,32 @@ python app/agents/skill_rag_agent/skills/mcp/scripts/list_tools.py --url http://
   "tools": [
     {
       "name": "search_company_policy",
-      "description": "사내 5대 공식 규정 문서(국내여비교통비지급규정, 인사복무규정, 정보보안관리지침, 전사위임전결및예산집행규정, 클라우드및GPU인프라운영지침)에서..."
+      "description": "사내 5대 공식 규정 문서(국내여비교통비지급규정, 인사복무규정, 정보보안관리지침, 전사위임전결및예산집행규정, 클라우드및GPU인프라운영지침)에서...",
+      "input_schema": { "type": "object", "properties": { "query": { "type": "string" } }, "required": ["query"] }
     },
     {
       "name": "search_aws_guides",
-      "description": "AWS Well-Architected Framework 4대 아키텍처 백서(Security, Reliability, Performance Efficiency, Cost Optimization)에서..."
+      "description": "AWS Well-Architected Framework 4대 아키텍처 백서(Security, Reliability, Performance Efficiency, Cost Optimization)에서...",
+      "input_schema": { "type": "object", "properties": { "query": { "type": "string" } }, "required": ["query"] }
     },
     {
       "name": "search_enterprise_erp",
-      "description": "사내 ERP 정형 데이터베이스(부서 마스터, 임직원 명부, 전략 프로젝트 및 투입 인력..."
+      "description": "사내 ERP 정형 데이터베이스(부서 마스터, 임직원 명부, 전략 프로젝트 및 투입 인력...",
+      "input_schema": { "type": "object", "properties": { "query": { ... }, "context": { ... } }, "required": ["query"] }
     },
     {
       "name": "graph_find_entities",
-      "description": "전사 지식 그래프(조직도, 보고선·결재선, 전략 프로젝트 P-01~P-06)에서 질문 속 인물·부서·프로젝트에 해당하는 엔티티를 찾습니다..."
+      "description": "전사 지식 그래프(조직도, 보고선·결재선, 전략 프로젝트 P-01~P-06)에서 질문 속 인물·부서·프로젝트에 해당하는 엔티티를 찾습니다...",
+      "input_schema": { ... }
     },
     {
       "name": "graph_neighbors",
-      "description": "지식 그래프에서 한 엔티티와 연결된 관계(소속, 보고, 담당, 승인, 의존 등)를 펼칩니다..."
-    }
+      "description": "지식 그래프에서 한 엔티티와 연결된 관계(소속, 보고, 담당, 승인, 의존 등)를 펼칩니다...",
+      "input_schema": { ... }
+    },
+    { "name": "graph_find_path", "description": "...", "input_schema": { ... } },
+    { "name": "graph_search_communities", "description": "...", "input_schema": { ... } },
+    { "name": "graph_read", "description": "...", "input_schema": { ... } }
   ]
 }
 ```
@@ -133,7 +141,7 @@ python app/agents/skill_rag_agent/skills/mcp/scripts/execute_tool.py --url http:
       "type": "bearer",
       "token_env": "ENTERPRISE_RAG_MCP_TOKEN"
     },
-    "description": "사내 규정 검색(search_company_policy), AWS 아키텍처 백서 검색(search_aws_guides), 전사 지식 그래프 탐색(graph_find_entities, graph_neighbors, graph_find_path, graph_search_communities, graph_read), 사내 ERP 정형 DB 조회(search_enterprise_erp) 도구"
+    "description": "사내 규정 검색(search_company_policy), AWS 아키텍처 백서 검색(search_aws_guides), 전사 지식 그래프 탐색(graph_find_entities, graph_neighbors, graph_find_path, graph_search_communities, graph_read), 사내 ERP Text2SQL 조회(search_enterprise_erp) 도구"
   }
 }
 ```
@@ -142,8 +150,8 @@ python app/agents/skill_rag_agent/skills/mcp/scripts/execute_tool.py --url http:
 > JSON 파일에 실제 토큰 문자열(비밀값)을 직접 하드코딩하지 않고, **환경 변수 이름(`ENTERPRISE_RAG_MCP_TOKEN`)**만 기술합니다.  
 > 덕분에 에이전트가 이 JSON 파일을 `file_read`로 읽더라도 시스템 프롬프트, 대화 히스토리, LangSmith 트레이스 로그에 실제 토큰 값이 절대 노출되지 않습니다.
 
-> 📌 **노트북 Part 6.2\~6.3 실행 확인**:  
-> 레지스트리 파일을 저장한 뒤, `notebooks/5_MCP_and_Skills.ipynb`의 **Part 6.1 레지스트리 확인 셀 ~ Part 6.3 Skills 에이전트 실행 셀**을 실행해 보세요. 에이전트가 방금 등록한 `mcp_servers.json`을 읽고 도구를 스스로 찾아 답변하며, 토큰 노출 검사에서 `노출 없음 ✅`이 출력되는 것을 확인할 수 있습니다.
+> 📌 **노트북 Part 6.1(레지스트리 확인) ~ Part 7 실행 확인**:  
+> 레지스트리 파일을 저장한 뒤, `notebooks/5_MCP_and_Skills.ipynb`로 돌아가 **Part 6.1 레지스트리 확인 셀 ~ Part 7 마지막 셀**까지 실행해 보세요. 에이전트가 방금 등록한 `mcp_servers.json`을 읽고 도구를 스스로 찾아 답변하며, 토큰 노출 검사에서 `노출 없음 ✅`이 출력되는 것을 확인한 뒤 아래 **3단계(Chainlit 비교)** 로 이어갑니다.
 
 ---
 
@@ -207,7 +215,7 @@ Chainlit UI(`http://localhost:8080`) 상단 프로필을 **`skill_rag_agent`**�
 
 - [ ] 토큰이 없을 때 `401 Unauthorized` 차단, `--token-env` 사용 시 도구 목록 조회 및 원격 도구 실행이 성공함을 CLI로 확인했다.
 - [ ] `app/agents/skill_rag_agent/skills/mcp/references/mcp_servers.json`에 `"enterprise_rag"` 서버를 보안 규격(`token_env`)에 맞추어 등록했다.
-- [ ] 노트북 `5_MCP_and_Skills.ipynb`의 Part 6.2\~6.3을 실행하여 Skills 에이전트 동작과 토큰 비노출(`노출 없음 ✅`)을 확인했다.
+- [ ] 노트북 `5_MCP_and_Skills.ipynb`의 Part 6.1(레지스트리 확인)\~Part 7을 실행하여 Skills 에이전트 동작과 토큰 비노출(`노출 없음 ✅`)을 확인했다.
 - [ ] Chainlit UI에서 `skill_rag_agent`의 5단계 점진적 탐색 궤적(파일 읽기 → `list_tools` → `execute_tool`)을 관찰하고, `tool_rag_agent`와의 트레이드오프를 이해했다.
 
 축하합니다! 이제 여러분은 도구가 에이전트 코드에 강결합된 구조를 넘어, **인증·인가된 MCP 서버와 Skills 점진적 공개 아키텍처**까지 완벽하게 구축하고 검증했습니다! 🚀

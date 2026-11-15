@@ -21,7 +21,7 @@ FastMCP 도구(`search_*` 3종 + 지식 그래프 탐색 `graph_*` 5종)로 노�
   search_enterprise_erp      data:erp    class:confidential    erp:read
   graph_* (탐색 도구 5종)     data:graph  class:confidential    graph:read
 
-👉 TODO 1, 2, 4, 5를 완성하세요. (missions/03_missions.md 2~3단계 참고)
+👉 TODO 1, 2, 3을 완성하세요. (missions/03_missions.md 2~3단계 참고)
 
 실행:
   python app/mcp/enterprise_rag_server.py            # http://localhost:8010/mcp
@@ -107,12 +107,8 @@ erp_text2sql = Text2SQL.from_semantic_layer(
 
 
 # ==============================================================================
-# TODO 4. 입력 스키마: 각 도구의 인자 타입 힌트(Annotated, Field)로 정의합니다 (별도 클래스 없음)
-# ==============================================================================
-
-
-# ==============================================================================
-# TODO 5. FastMCP 도구 등록: 검색 도구 3종 + 지식 그래프 탐색 도구 5종 (missions/03_missions.md 3단계 참고)
+# TODO 3. FastMCP 도구 등록: 검색 도구 3종 + 지식 그래프 탐색 도구 5종 (missions/03_missions.md 3단계 참고)
+#   ※ 입력 스키마는 별도 클래스 없이 각 도구의 인자 타입 힌트(Annotated, Field)로 정의합니다.
 #   - search_company_policy(query: str)
 #       auth=require_scopes("docs:read"),  tags={"data:docs", "class:internal"}
 #   - search_aws_guides(query: str)

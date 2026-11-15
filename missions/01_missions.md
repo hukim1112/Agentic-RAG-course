@@ -31,6 +31,8 @@
 
 ## 단계별 수행 가이드
 
+> 💡 **사전 확인**: `README.md` 초기 세팅 안내에 따라 프로젝트 루트의 `.env` 파일에 `OPENAI_API_KEY`와 `GOOGLE_API_KEY`가 입력되어 있는지 확인하세요. (`CHAINLIT_AUTH_SECRET`, `ENTERPRISE_RAG_MCP_TOKEN`은 기본 설정되어 있습니다.)
+
 ### 1단계: `app/tools/file_rag_tools.py`에 파일 탐색 도구 3종 구현
 
 `app/tools/file_rag_tools.py` 파일을 열고 아래 코드로 `TODO 1~3` 구간(또는 파일 전체)을 작성합니다.  
@@ -296,7 +298,6 @@ async def create_agent_executor(checkpointer=None):
     """File RAG ReAct Agent 팩토리 함수"""
     llm = init_chat_model(model="gemini-3.8-flash", temperature=0.0)
 
-    conn = None
     if checkpointer is None:
         db_dir = "app/database"
         os.makedirs(db_dir, exist_ok=True)
@@ -308,15 +309,13 @@ async def create_agent_executor(checkpointer=None):
         checkpointer = AsyncSqliteSaver(conn)
         await checkpointer.setup()
 
-    agent = create_agent(
+    return create_agent(
         model=llm,
         tools=file_rag_tools,
         system_prompt=FILE_RAG_SYSTEM_PROMPT,
         checkpointer=checkpointer,
         context_schema=AgentContext,
     )
-    agent.checkpointer_conn = conn
-    return agent
 ```
 
 ---
