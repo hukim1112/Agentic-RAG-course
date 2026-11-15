@@ -1,12 +1,13 @@
 """
 app/eval/rag_eval.py
 ====================
-오프라인 평가 하네스 러너 (노트북 6과 CLI 공용)
+오프라인 평가 러너 (노트북 6과 CLI 공용)
 
-골든 데이터셋으로 app의 에이전트를 실행하고, 과정(Trajectory)과 결과(Outcome)를 2계층으로 채점한 뒤
-실패 유형을 분류합니다. 결과는 artifacts/eval_runs/에 JSON으로 저장되어 다음 실행과 비교할 수 있습니다.
+골든 데이터셋으로 에이전트를 실행하고, 기본 제공 메트릭 또는 사용자가 조합한
+커스텀 메트릭 리스트(`metrics=[...]`)로 채점한 뒤 실패 진단을 수행합니다.
+결과는 artifacts/eval_runs/에 JSON으로 저장되어 다음 실행과 비교할 수 있습니다.
 
-    평가 실행 → 실패 분석 → 도구/프롬프트/인덱스 수정 → 재평가 (회귀 확인)
+    평가 실행 → 원인 진단 → 도구/인덱스/프롬프트 수정 → 재평가 (기존 문항 회귀 여부 확인)
 
 사용 예:
   python -m app.eval.rag_eval --agent tool_rag_agent
@@ -24,7 +25,7 @@ import asyncio
 import argparse
 import importlib
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 if PROJECT_ROOT not in sys.path:
@@ -36,6 +37,7 @@ load_dotenv(os.path.join(PROJECT_ROOT, ".env"), override=True)
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.errors import GraphRecursionError
 
+from app.eval.metrics import EvalMetric, EvalSample
 from app.middleware.rag_eval_harness import (
     RAGEvalHarnessMiddleware,
     extract_last_ai_answer,
@@ -93,9 +95,7 @@ def trajectory_from_messages(messages: list) -> List[Dict[str, Any]]:
     return trajectory
 
 
-# 진단 규칙: (진단명, 점수 위치, 지표, 기준, 의심할 계층)
-# 순서는 에이전트 처리 흐름(도구 선택 → 검색 → 생성)을 따릅니다.
-# 여러 항목이 동시에 걸릴 수 있으며(다중 진단), 순서는 "먼저 살펴볼 곳"을 정할 때만 씁니다.
+# 기본 진단 규칙 (metrics 미지정 시 사용): (진단명, 점수 위치, 지표, 기준, 의심할 계층)
 DIAGNOSTIC_RULES = [
     ("도구 선택",     "trajectory", "tool_selection_accuracy", 0.6, "도구 설명(description), 시스템 프롬프트"),
     ("검색 품질",     "outcome",    "context_recall",          0.6, "검색 쿼리, 인덱스(청킹/헤더/메타데이터), 도구 인자"),
@@ -107,11 +107,7 @@ DIAGNOSTIC_RULES = [
 
 
 def diagnose(traj, outcome) -> List[str]:
-    """기준에 못 미친 진단 항목을 모두 반환합니다 (다중 진단).
-
-    통과한 문항이라도 기준 미달 지표가 있으면 표시합니다. 첫 항목은 처리 흐름상 가장 앞단이므로
-    "먼저 살펴볼 곳"이지만, 가장 중요한 원인이라는 뜻은 아닙니다.
-    """
+    """기준에 못 미친 진단 항목을 모두 반환합니다 (다중 진단)."""
     scores = {"trajectory": traj, "outcome": outcome}
     return [name for name, where, metric, threshold, _ in DIAGNOSTIC_RULES
             if getattr(scores[where], metric) < threshold]
@@ -146,7 +142,7 @@ async def run_case(agent, case: dict) -> dict:
 
 
 def score_case(case: dict, record: dict, harness: RAGEvalHarnessMiddleware) -> dict:
-    """2계층(과정 40% + 결과 60%)으로 채점하고 실패 유형을 붙입니다."""
+    """기본 2계층(과정 40% + 결과 60%) 채점기."""
     traj = harness.evaluate_trajectory(case["question"], case["target_tools"], record["trajectory"], record["answer"])
     outcome = harness.evaluate_outcome(case["question"], case["ground_truth"], record["contexts"], record["answer"])
     composite = round(0.40 * traj.trajectory_score + 0.60 * outcome.outcome_score, 3)
@@ -174,18 +170,110 @@ def score_case(case: dict, record: dict, harness: RAGEvalHarnessMiddleware) -> d
     }
 
 
-async def evaluate_agent(agent, cases: List[dict], judge_llm=None, concurrency: int = 3, verbose: bool = True) -> List[dict]:
-    """골든 문항들을 동시에 실행/채점합니다. 채점 LLM 오류는 고정 점수로 숨기지 않고 그대로 드러냅니다."""
+async def score_case_with_metrics(
+    case: dict,
+    record: dict,
+    metrics: Sequence[EvalMetric],
+    judge_llm: Any,
+    harness: RAGEvalHarnessMiddleware,
+) -> dict:
+    """사용자가 지정한 메트릭 리스트(기본 + 커스텀 조합)로 단일 문항을 채점합니다."""
+    sample = EvalSample(
+        id=case["id"],
+        category=case["category"],
+        question=case["question"],
+        ground_truth=case.get("ground_truth", ""),
+        target_tools=case.get("target_tools", []),
+        answer=record["answer"],
+        contexts=record["contexts"],
+        trajectory=record["trajectory"],
+        duration_s=record["duration_s"],
+        hit_limit=record.get("hit_limit", False),
+    )
+
+    evaluated = await asyncio.gather(
+        *(m.aevaluate(sample, judge_llm=judge_llm, harness=harness) for m in metrics)
+    )
+
+    metric_scores: Dict[str, float] = {}
+    diagnoses: List[str] = []
+    weighted_sum = 0.0
+    total_weight = sum(m.weight for m in metrics if m.weight > 0)
+
+    for m, (score, _) in zip(metrics, evaluated):
+        metric_scores[m.name] = score
+        if total_weight > 0:
+            if m.weight > 0:
+                weighted_sum += m.weight * score
+        else:
+            weighted_sum += score
+        if m.threshold is not None and score < m.threshold:
+            diagnoses.append(m.diagnosis)
+
+    if record.get("hit_limit"):
+        diagnoses.append("호출 한도 초과")
+
+    denom = total_weight if total_weight > 0 else max(len(metrics), 1)
+    composite = round(weighted_sum / denom, 3)
+
+    traj_cached = sample._cache.get("trajectory_eval")
+    out_cached = sample._cache.get("outcome_eval")
+
+    row: Dict[str, Any] = {
+        "id": case["id"],
+        "category": case["category"],
+        "composite": composite,
+        "passed": composite >= PASS_THRESHOLD,
+        **metric_scores,
+        "tool_calls": len(record["trajectory"]),
+        "tools": [t["tool_name"] for t in record["trajectory"]],
+        "duration_s": record["duration_s"],
+        "diagnoses": diagnoses,
+        "critique": traj_cached.critique if traj_cached else "",
+        "outcome_rationale": out_cached.rationale if out_cached else "",
+        "question": case["question"],
+        "answer": record["answer"],
+        "metric_specs": [m.to_spec() for m in metrics],
+    }
+    if traj_cached is not None and "trajectory" not in row:
+        row["trajectory"] = round(traj_cached.trajectory_score, 2)
+    if out_cached is not None and "outcome" not in row:
+        row["outcome"] = round(out_cached.outcome_score, 2)
+    return row
+
+
+async def evaluate_agent(
+    agent,
+    cases: List[dict],
+    metrics: Optional[Sequence[EvalMetric]] = None,
+    judge_llm=None,
+    concurrency: int = 3,
+    verbose: bool = True,
+) -> List[dict]:
+    """골든 문항들을 병렬로 실행·채점합니다.
+
+    - `metrics=None`이면 기본 2계층(과정 40% + 결과 60%) 채점기를 실행합니다.
+    - `metrics=[...]`로 기본 메트릭과 커스텀 메트릭 리스트를 전달하면 해당 조합으로 채점하고,
+      `results_table(rows)`에서 모든 지표를 한 테이블로 나란히 비교할 수 있습니다.
+    """
+    if metrics is not None and not isinstance(metrics, (list, tuple)):
+        # 위치 인자로 judge_llm이 전달된 경우의 하위 호환 처리
+        judge_llm, metrics = metrics, None
+
     if judge_llm is None:
         from app.utils import init_chat_model
         judge_llm = init_chat_model(model=JUDGE_MODEL, temperature=0.0)
+
     harness = RAGEvalHarnessMiddleware(judge_llm=judge_llm, verbose=False, strict=True)
     semaphore = asyncio.Semaphore(concurrency)
 
     async def one(case):
         async with semaphore:
             record = await run_case(agent, case)
-            row = await asyncio.to_thread(score_case, case, record, harness)
+            if metrics is not None:
+                row = await score_case_with_metrics(case, record, metrics, judge_llm, harness)
+            else:
+                row = await asyncio.to_thread(score_case, case, record, harness)
             if verbose:
                 verdict = "통과" if row["passed"] else "미달"
                 print(f"  ✔ {row['id']:<8} 종합 {row['composite']:.2f} ({verdict}) | 도구 호출 {row['tool_calls']}회")
@@ -201,7 +289,7 @@ async def load_app_agent(name: str):
     return await module.create_agent_executor()
 
 
-# 결과 표의 컬럼: (행 키, 표시 이름)
+# 기본 결과 표의 컬럼 (metrics 미지정 시): (행 키, 표시 이름)
 RESULT_COLUMNS = [
     ("id", "문항"),
     ("category", "유형"),
@@ -220,6 +308,17 @@ RESULT_COLUMNS = [
 ]
 
 
+def _resolve_metric_specs(
+    rows: List[dict],
+    metrics: Optional[Sequence[EvalMetric]] = None,
+) -> Optional[List[Dict[str, Any]]]:
+    if metrics is not None:
+        return [m.to_spec() for m in metrics]
+    if rows and "metric_specs" in rows[0]:
+        return rows[0]["metric_specs"]
+    return None
+
+
 def summary_line(rows: List[dict]) -> str:
     """평가 전체를 한 줄로 요약합니다."""
     n = len(rows)
@@ -229,31 +328,72 @@ def summary_line(rows: List[dict]) -> str:
             f"평균 도구 호출 {mean('tool_calls'):.1f}회 | 평균 소요 {mean('duration_s'):.1f}s")
 
 
-def results_table(rows: List[dict]):
-    """문항별 점수 표 (DataFrame). 점수가 낮은 문항부터 정렬합니다."""
+def results_table(rows: List[dict], metrics: Optional[Sequence[EvalMetric]] = None):
+    """문항별 점수 표 (DataFrame). 점수가 낮은 문항부터 정렬합니다.
+
+    `metrics` 리스트로 채점한 경우 기본 메트릭과 커스텀 메트릭 컬럼을 모두 나란히 표시합니다.
+    """
     import pandas as pd
     df = pd.DataFrame(rows).sort_values("composite")
     df["verdict"] = df["passed"].map({True: "통과", False: "미달"})
     df["diagnosis"] = df["diagnoses"].map(lambda d: ", ".join(d) if d else "-")
-    keys, names = zip(*RESULT_COLUMNS)
-    return df[list(keys)].rename(columns=dict(RESULT_COLUMNS)).reset_index(drop=True)
+
+    specs = _resolve_metric_specs(rows, metrics)
+    if specs:
+        columns = [
+            ("id", "문항"),
+            ("category", "유형"),
+            ("composite", "종합"),
+            *((s["name"], s["label"]) for s in specs),
+            ("tool_calls", "호출 수"),
+            ("duration_s", "소요(s)"),
+            ("verdict", "판정"),
+            ("diagnosis", "진단 (기준 미달 지표)"),
+        ]
+    else:
+        columns = RESULT_COLUMNS
+
+    keys, _ = zip(*columns)
+    return df[list(keys)].rename(columns=dict(columns)).reset_index(drop=True)
 
 
-def diagnosis_table(rows: List[dict]):
-    """진단 항목별로 기준 미달 문항을 집계합니다 (DataFrame).
-
-    한 문항이 여러 항목에 동시에 걸릴 수 있으므로 문항 수의 합은 전체 문항 수와 다를 수 있습니다.
-    통과한 문항의 기준 미달 지표도 포함합니다.
-    """
+def diagnosis_table(rows: List[dict], metrics: Optional[Sequence[EvalMetric]] = None):
+    """진단 항목별로 기준 미달 문항을 집계합니다 (DataFrame)."""
     import pandas as pd
+    specs = _resolve_metric_specs(rows, metrics)
     table = []
-    for name, where, metric, threshold, layer in DIAGNOSTIC_RULES:
-        hits = [r["id"] for r in sorted(rows, key=lambda x: x["id"]) if name in r["diagnoses"]]
-        table.append({"진단": name, "지표 (기준)": f"{metric} < {threshold}", "해당 문항 수": len(hits),
-                      "해당 문항": ", ".join(hits) or "-", "의심할 계층": layer})
+    if specs:
+        for s in specs:
+            if s.get("threshold") is None:
+                continue
+            diag_name = s["diagnosis"]
+            hits = [r["id"] for r in sorted(rows, key=lambda x: x["id"]) if diag_name in r["diagnoses"]]
+            table.append({
+                "진단": diag_name,
+                "지표 (기준)": f"{s['name']} < {s['threshold']}",
+                "해당 문항 수": len(hits),
+                "해당 문항": ", ".join(hits) or "-",
+                "의심할 계층": s.get("suspect_layer") or "-",
+            })
+    else:
+        for name, where, metric, threshold, layer in DIAGNOSTIC_RULES:
+            hits = [r["id"] for r in sorted(rows, key=lambda x: x["id"]) if name in r["diagnoses"]]
+            table.append({
+                "진단": name,
+                "지표 (기준)": f"{metric} < {threshold}",
+                "해당 문항 수": len(hits),
+                "해당 문항": ", ".join(hits) or "-",
+                "의심할 계층": layer,
+            })
+
     hits = [r["id"] for r in sorted(rows, key=lambda x: x["id"]) if "호출 한도 초과" in r["diagnoses"]]
-    table.append({"진단": "호출 한도 초과", "지표 (기준)": f"실행 단계 > {RECURSION_LIMIT}", "해당 문항 수": len(hits),
-                  "해당 문항": ", ".join(hits) or "-", "의심할 계층": "도구 인자, 호출 지침 (같은 검색 반복)"})
+    table.append({
+        "진단": "호출 한도 초과",
+        "지표 (기준)": f"실행 단계 > {RECURSION_LIMIT}",
+        "해당 문항 수": len(hits),
+        "해당 문항": ", ".join(hits) or "-",
+        "의심할 계층": "도구 인자, 호출 지침 (같은 검색 반복)",
+    })
     return pd.DataFrame(table)
 
 
@@ -273,12 +413,21 @@ def compare_table(before: List[dict], after: List[dict]):
             continue
         p = prev[r["id"]]
         delta = round(r["composite"] - p["composite"], 2)
+        call_diff = p["tool_calls"] - r["tool_calls"]
+        if delta <= -NOISE_BAND:
+            verdict = "회귀 ⚠️"
+        elif delta >= NOISE_BAND:
+            verdict = "개선"
+        elif delta >= 0.03 and call_diff >= 3:
+            verdict = "개선 (호출 절감)"
+        else:
+            verdict = "유지"
         table.append({
             "문항": r["id"],
             "종합 (전)": p["composite"], "종합 (후)": r["composite"], "변화": delta,
             "호출 수 (전)": p["tool_calls"], "호출 수 (후)": r["tool_calls"],
             "소요(s) (전)": p["duration_s"], "소요(s) (후)": r["duration_s"],
-            "판정": "개선" if delta >= NOISE_BAND else ("회귀 ⚠️" if delta <= -NOISE_BAND else "유지"),
+            "판정": verdict,
         })
     return pd.DataFrame(table)
 
@@ -317,7 +466,7 @@ async def _main(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Agentic RAG offline evaluation harness")
+    parser = argparse.ArgumentParser(description="Agentic RAG offline evaluation runner")
     parser.add_argument("--agent", default="tool_rag_agent", help="app/agents/ 아래 에이전트 이름")
     parser.add_argument("--ids", nargs="*", default=None, help="평가할 문항 id (생략 시 전체)")
     parser.add_argument("--concurrency", type=int, default=3, help="동시 실행 문항 수")
