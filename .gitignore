@@ -30,6 +30,7 @@ app/database/chat_history.db*
 
 # ── Logs ──
 *.log
+app/database/graphrag/logs/
 
 # ── Task tracking & State ──
 task.md
@@ -52,7 +53,7 @@ TASK.md
 samples/
 scratch/
 sandbox/
-output/
+/output/
 
 # ── Chainlit runtime files ──
 .files/
