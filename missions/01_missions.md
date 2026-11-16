@@ -4,17 +4,15 @@
 
 ---
 
-## 실습 대상 파일
+## 📂 실습 대상 및 핵심 파일
 
-* **도구 모듈 (작성 대상 ①)**: `app/tools/file_rag_tools.py`  
-  - 경로 검증 헬퍼(`_resolve_safe_path`)를 활용해 `list_docs`, `search_docs`, `read_doc` 도구 3종을 완성합니다.
-* **에이전트 모듈 (새로 생성 ②)**: `app/agents/file_rag_agent.py`  
-  - `app/agents/` 폴더에 새 파일을 생성하고 `AGENT_METADATA`와 `create_agent_executor()`를 작성합니다.  
-  - *(참고: 실습 앱의 에이전트는 `file_rag_agent`(Mission 01) ➔ `tool_rag_agent`(Mission 02) ➔ `skill_rag_agent`(Mission 04) 순서로 확장됩니다.)*
-* **탐색 대상 문서 (제공)**: `data/policies/*.md` (5개 사내 규정·지침 마크다운 파일)
-* **서빙 엔트리포인트 (제공 · 수정 불필요)**:
-  - 백엔드 에이전트 서버: `app/server.py` (FastAPI, 포트 `8000`)
-  - 프론트엔드 채팅 UI: `app/chainlit_ui.py` (Chainlit, 포트 `8080`)
+| 구분 | 파일 경로 | 역할 |
+| :--- | :--- | :--- |
+| **작성 (TODO)** | `app/tools/file_rag_tools.py` | 파일 탐색 도구 3종(`list_docs`, `search_docs`, `read_doc`) 완성 |
+| **신규 생성** | `app/agents/file_rag_agent.py` | `AGENT_METADATA` 및 `create_agent_executor()` 작성 |
+| **제공 (문서)** | `data/policies/*.md` | 사내 규정·지침 마크다운 5종 |
+| **제공 (실행)** | `app/server.py`, `app/chainlit_ui.py` | FastAPI 서버(`:8000`) · Chainlit UI(`:8080`) |
+| **연계 노트북** | `notebooks/1_Create_Agent.ipynb` | 사전 학습 노트북 |
 
 ---
 

@@ -7,18 +7,13 @@ FastAPI 백엔드 서버와 Chainlit 채팅 UI 환경에서 가동하여 **에�
 
 ## 📂 실습 대상 및 핵심 파일
 
-* **에이전트 조립 파일 (TODO 작성 대상)**: `app/agents/tool_rag_agent/agent.py`  
-  👉 **이 파일의 `create_agent_executor()`를 완성하세요!**
-* **검색 도구 (제공)**: `app/agents/tool_rag_agent/tools.py`의 `tools_tool_rag` — 노트북 Part 4에서 다룬 4대 데이터 소스용 도구:
-  - `search_company_policy`: 사내 5대 공식 규정집 검색 (Vector + BM25 Hybrid)
-  - `search_aws_guides`: AWS Well-Architected 4대 아키텍처 백서 검색 (Vector + BM25 Hybrid)
-  - `search_enterprise_erp`: 사내 ERP 정형 데이터베이스 조회 (Text2SQL)
-  - 지식 그래프 탐색 도구 5종 (GraphRAG 인덱스): `graph_find_entities`(엔티티 연결), `graph_neighbors`(관계 펼치기), `graph_find_path`(경로 찾기), `graph_search_communities`(커뮤니티 리포트 검색), `graph_read`(원문 확인)
-* **시스템 프롬프트 (제공)**: `app/agents/tool_rag_agent/prompt.py` — ReAct 판단 원칙 및 답변 가이드라인
-* **실행 엔트리포인트 (제공)**:
-  - 백엔드 서버: `app/server.py` (FastAPI, 포트 8000)
-  - 웹 채팅 UI: `app/chainlit_ui.py` (Chainlit, 포트 8080)
-* **사전 학습 노트북**: `notebooks/2_Agentic_RAG.ipynb`
+| 구분 | 파일 경로 | 역할 |
+| :--- | :--- | :--- |
+| **작성 (TODO)** | `app/agents/tool_rag_agent/agent.py` | `create_agent_executor()` 완성 |
+| **제공 (도구)** | `app/agents/tool_rag_agent/tools.py` | 4대 데이터 소스 검색 도구 8종 (`tools_tool_rag`) |
+| **제공 (프롬프트)** | `app/agents/tool_rag_agent/prompt.py` | ReAct 판단 원칙 및 답변 가이드라인 |
+| **제공 (실행)** | `app/server.py`, `app/chainlit_ui.py` | FastAPI 서버(`:8000`) · Chainlit UI(`:8080`) |
+| **연계 노트북** | `notebooks/2_Agentic_RAG.ipynb` | 사전 학습 노트북 |
 
 ---
 
