@@ -8,15 +8,12 @@ CLI 스크립트 보안 검증, **MCP 서버 레지스트리(`mcp_servers.json`)
 
 ## 📂 실습 대상 및 핵심 파일
 
-* **MCP 서버 레지스트리 (TODO 작성 대상)**: `app/agents/skill_rag_agent/skills/mcp/references/mcp_servers.json`  
-  👉 **이미 등록된 공개 위키백과(Stdio) 서버 옆에 사내 Enterprise RAG 서버(HTTP)를 추가 등록하세요!**
-* **MCP 스킬 패키지 (제공)**:
-  - 스킬 매뉴얼: `app/agents/skill_rag_agent/skills/mcp/Skill.md` (점진적 공개 Progressive Disclosure 지침)
-  - MCP 범용 클라이언트 CLI: `app/agents/skill_rag_agent/skills/mcp/scripts/list_tools.py`, `app/agents/skill_rag_agent/skills/mcp/scripts/execute_tool.py`
-* **비교 대상 에이전트 2종**:
-  - `app/agents/tool_rag_agent/` (Mission 02에서 완성한 도구 직접 바인딩 에이전트)
-  - `app/agents/skill_rag_agent/` (범용 원시 도구 3종 + 스킬 카탈로그만으로 동작하는 자율 탐색 에이전트)
-* **사전 조건**: Mission 03에서 구현한 `app/mcp/enterprise_rag_server.py`가 포트 `8010`에서 실행 중이어야 합니다.
+| 구분 | 파일 경로 | 역할 |
+| :--- | :--- | :--- |
+| **작성 (TODO)** | `app/agents/skill_rag_agent/skills/mcp/references/mcp_servers.json` | 사내 Enterprise RAG MCP 서버(`:8010/mcp`) 등록 |
+| **제공 (스킬)** | `app/agents/skill_rag_agent/skills/mcp/` | `Skill.md`(지침), `scripts/list_tools.py`, `scripts/execute_tool.py` |
+| **비교 대상** | `app/agents/tool_rag_agent/`, `app/agents/skill_rag_agent/` | 직접 바인딩 에이전트 vs 스킬 기반 자율 탐색 에이전트 |
+| **사전 조건** | `app/mcp/enterprise_rag_server.py` | Mission 03의 FastMCP 서버가 포트 `8010`에서 실행 중이어야 함 |
 
 ---
 

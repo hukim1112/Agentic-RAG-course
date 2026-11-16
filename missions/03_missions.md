@@ -7,13 +7,11 @@
 
 ## 📂 실습 대상 및 핵심 파일
 
-* **MCP 서버 구현 파일 (TODO 작성 대상)**: `app/mcp/enterprise_rag_server.py`  
-  👉 **이 파일의 `TODO 1, 2`(인증·인가 프로바이더 및 서버 생성)와 `TODO 3`(4대 DB 도구 등록)을 완성하세요!**
-* **사전 구축된 4대 데이터베이스 (제공)**: `app/database/`
-  - `chroma_db/`: 사내 규정(`enterprise_policy_store`, 239청크) 및 AWS Well-Architected 백서(`aws_waf_guides_store`, 4,641청크)
-  - `enterprise_erp.db`: 사내 ERP 정형 데이터베이스 (SQLite, 7개 테이블 — `Text2SQL` 연동)
-  - `graphrag/`: Microsoft GraphRAG 전사 지식 그래프 인덱스 (`rag/graph/graph_explorer.py`의 탐색 도구 5종 연동)
-* **연계 학습 노트북**: `notebooks/5_MCP_and_Skills.ipynb`
+| 구분 | 파일 경로 | 역할 |
+| :--- | :--- | :--- |
+| **작성 (TODO)** | `app/mcp/enterprise_rag_server.py` | 인증·인가(`TODO 1~2`) 및 4대 DB 도구 8종 등록(`TODO 3`) |
+| **제공 (DB)** | `app/database/` | `chroma_db/`(규정·AWS 백서), `enterprise_erp.db`(SQLite), `graphrag/`(지식 그래프) |
+| **연계 노트북** | `notebooks/5_MCP_and_Skills.ipynb` | 사전·연계 학습 노트북 |
 
 ---
 
