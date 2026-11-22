@@ -9,11 +9,13 @@ from .rag_eval_harness import (
     extract_user_query,
     extract_tool_contexts,
 )
+from .observability import AgentLogTracer
 from app.prompts.skill_middleware import SkillCatalogMiddleware
 
 __all__ = [
     "LoggingMiddleware",
     "ReferenceLoggingMiddleware",
+    "AgentLogTracer",
     "SkillCatalogMiddleware",
     "RAGEvalHarnessMiddleware",
     "TrajectoryEvaluation",
