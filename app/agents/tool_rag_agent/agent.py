@@ -13,11 +13,9 @@
 ===============================================================================
 """
 
-import os
-import aiosqlite
-from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langchain.agents import create_agent
 from app.utils import init_chat_model
+from app.utils.database import get_shared_checkpointer
 from app.utils.context import AgentContext
 
 from .prompt import TOOL_RAG_SYSTEM_PROMPT
@@ -36,10 +34,9 @@ async def create_agent_executor(checkpointer=None):
     # ==========================================================================
 
     # ==========================================================================
-    # TODO 2. AsyncSqliteSaver 기반 체크포인터 (SQLite 영구 메모리)
-    #   - checkpointer가 None일 때만 app/database/checkpoints.db 연결 생성
-    #   - aiosqlite.connect(..., check_same_thread=False)로 연결 (WAL 모드 권장)
-    #   - AsyncSqliteSaver(conn) 생성 후 반드시 `await checkpointer.setup()` 호출
+    # TODO 2. 공유 SQLite 체크포인터 SSOT (AsyncSqliteSaver)
+    #   - FastAPI 서버 실행 시에는 공유 checkpointer가 인자로 주입됨
+    #   - 단독 실행(checkpointer is None)일 때만 `await get_shared_checkpointer()` 호출
     # ==========================================================================
 
     # ==========================================================================

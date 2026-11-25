@@ -15,11 +15,9 @@ tool_rag_agent와 같은 ReAct 루프를 쓰며, 도구를 연결하는 방식�
 ===============================================================================
 """
 
-import os
-import aiosqlite
-from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langchain.agents import create_agent
 from app.utils import init_chat_model
+from app.utils.database import get_shared_checkpointer
 from app.utils.context import AgentContext
 
 from app.middleware import SkillCatalogMiddleware
@@ -36,17 +34,9 @@ async def create_agent_executor(checkpointer=None):
     # 1. LLM 설정
     llm = init_chat_model(model="gemini-3.8-flash", temperature=0.0)
 
-    # 2. AsyncSqliteSaver 기반 체크포인터 (SQLite 영구 메모리)
+    # 2. 공유 SQLite 체크포인터 SSOT (AsyncSqliteSaver)
     if checkpointer is None:
-        db_dir = "app/database"
-        os.makedirs(db_dir, exist_ok=True)
-        checkpoints_path = os.path.join(db_dir, "checkpoints.db")
-
-        conn = await aiosqlite.connect(checkpoints_path, check_same_thread=False)
-        await conn.execute("PRAGMA journal_mode=WAL;")
-        await conn.execute("PRAGMA busy_timeout=5000;")
-        checkpointer = AsyncSqliteSaver(conn)
-        await checkpointer.setup()
+        checkpointer = await get_shared_checkpointer()
 
     # 3. 미들웨어 구성 (SkillCatalogMiddleware: 스킬 카탈로그 동적 주입)
     middleware = [SkillCatalogMiddleware(get_skill_prompt_builder())]
