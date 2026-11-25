@@ -43,7 +43,7 @@ python app/server.py
 **성공 콘솔 출력 예시:**
 ```text
 Loading .env from: .../.env
-📈 LangSmith Tracing Enabled. Project: llmops-agent-server
+ℹ️ LangSmith Tracing Disabled (set LANGCHAIN_TRACING_V2=true in .env to enable).
 INFO:     Started server process [12345]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
@@ -80,11 +80,9 @@ Your app is available at http://localhost:8080
 ```python
 # app/agents/tool_rag_agent/agent.py
 
-import os
-import aiosqlite
-from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langchain.agents import create_agent
 from app.utils import init_chat_model
+from app.utils.database import get_shared_checkpointer
 from app.utils.context import AgentContext
 
 from .prompt import TOOL_RAG_SYSTEM_PROMPT
@@ -105,17 +103,9 @@ async def create_agent_executor(checkpointer=None):
     # 1. LLM 설정 (창의성 억제 및 정확한 사실 검색을 위해 temperature=0.0)
     llm = init_chat_model(model="gemini-3.8-flash", temperature=0.0)
 
-    # 2. AsyncSqliteSaver 기반 영구 체크포인터 (세션 히스토리 영속화)
+    # 2. 공유 SQLite 체크포인터 SSOT (AsyncSqliteSaver, 세션 히스토리 영속화)
     if checkpointer is None:
-        db_dir = "app/database"
-        os.makedirs(db_dir, exist_ok=True)
-        checkpoints_path = os.path.join(db_dir, "checkpoints.db")
-
-        conn = await aiosqlite.connect(checkpoints_path, check_same_thread=False)
-        await conn.execute("PRAGMA journal_mode=WAL;")
-        await conn.execute("PRAGMA busy_timeout=5000;")
-        checkpointer = AsyncSqliteSaver(conn)
-        await checkpointer.setup()
+        checkpointer = await get_shared_checkpointer()
 
     # 3. 4대 검색 도구와 ReAct 시스템 프롬프트를 바인딩한 에이전트 생성
     return create_agent(
